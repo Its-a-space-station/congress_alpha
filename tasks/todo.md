@@ -1,82 +1,70 @@
-# Task: M2c annual FD assets/liabilities parsing + member-matching fix
+# Task: M3 normalization, position reconstruction, net-worth estimation
 
 ## Context
-- Final M2 slice: parse annual Financial Disclosure PDFs (assets + liabilities
-  sections, per user scope decision) into new `Holding`/`Liability` tables, and fix
-  the member-matching nickname gap flagged in M2b. Executed as a goal-mode run.
+- Third milestone per `tasks/plan.md` §3-M3: turn parsed rows into derived,
+  certainty-labeled estimates — estimated open positions and household net
+  worth. Executed as a goal-mode run. No network needed (computes entirely
+  from the local DB).
 
 ## Plan
-- [x] Member-matching fix: `official_full` on Member, fallback rules (official-full
-      tokens + curated nickname groups), fixture tests (Richard↔Rick), measured
-      relink improvement.
-- [x] Download bounded FD corpus (15 real annual FDs ≤ 25 cap).
-- [x] Inspect real FD layouts before parser design.
-- [x] Add `Holding`/`Liability` models.
-- [x] Build `app/parsing/house_fd.py` (parser_version `house-fd-0.1`) + `store_fd.py`.
-- [x] Golden fixtures: 6 real FDs + expected JSON (253 holdings, 19 liabilities).
-- [x] Tests: golden exact-match, fail2pass, negative controls, cross-checks, store.
-- [x] CLI: `parse --type A` dispatch by filing type.
-- [x] Run gates + demo.
+- [x] Normalization: documented `midpoint()` utility; asset canonicalization
+      with grouping confidence (ticker=high, canonical name=medium, ungrouped=low).
+- [x] Input-validation checkpoint (`app/intelligence/checkpoint.py`) — per-member
+      data facts feeding every certainty label.
+- [x] Position reconstruction (`app/intelligence/positions.py`) — documented
+      conservative method.
+- [x] Net-worth estimator (`app/intelligence/net_worth.py`) — household sums with
+      conservative bounds.
+- [x] CLI `reconstruct`: midpoint backfill + deterministic rebuild + stats.
+- [x] Golden scenario tests (baseline, purchase, full/partial sale, range-only,
+      missing baseline) + normalization + net worth + rebuild determinism.
+- [x] Run gates + demo on the real DB.
 - [x] Update this file with verification details and review notes.
 
-## Notes — member-matching fix (verified with real numbers)
-- Root cause of the gap: index uses formal names ("Richard W. Allen"), dataset uses
-  everyday names ("Rick"); `official_full` does NOT bridge it ("Rick W. Allen").
-- Fix: curated nickname-group table (reviewable plain data in `house.py`) +
-  official_full token fallback; exactly-one-candidate rule retained (ambiguity →
-  unmatched). `Member.official_full` column added; members re-ingested from cache.
-- Measured on the real index (`ingest filings --refresh`): 2025: 833 → 935 matched;
-  2026: 283 → 303. Total 1,116 → 1,238 (+122, +10.9%), zero regressions.
-
-## Notes — FD parsing findings (2026-07-24)
-- Annual FDs are far harder than PTRs: account wrappers ("Fidelity IRA Rollover ⇒")
-  with sub-assets, cells wrapping across lines in THREE different orders (columns,
-  then name; name, then columns; mixed), L:/D: annotation lines, and at least two
-  form variants (modern electronic; older two-income-column "Current/Preceding Year").
-- Final architecture: coordinate-based column binning — each section's own header
-  line provides x anchors; words are binned to true columns; rows assemble via
-  bracket `[XX]` / "⇒" anchors with a completion rule (bracket + value-or-"None").
-  Two earlier text-mode attempts failed on real variants (freeze rule applied:
-  switched strategy instead of patching a 3rd time).
-- Section headers can appear MID-PAGE on candidate filings → document-order
-  (header, body_line) streams per section; earned-income/transactions/positions/
-  agreements/travel sections detected and skipped.
-- "None" is a legitimate disclosed value (no completion without it); source footer
-  and spaced-banner lines filtered by vocabulary/banner rules.
-- Cross-checks: value min ≤ max on holdings and liabilities; "not an FD" detection;
-  garbage PDFs → zero rows + warning, never a crash.
-- Results on 15 real FDs: 875 holdings + 56 liabilities, only ~1% low-confidence
-  rows (all flagged, none silent).
+## Notes — method decisions (per CLAUDE.md auditability rules)
+- Reconstruction method (in `positions.py` docstring): baseline = latest annual-FD
+  holdings (MEDIUM certainty — disclosed presence, ranged aging values); PTR overlay
+  = post-baseline purchases open LOW positions, purchases of baseline assets
+  corroborate (MEDIUM), post-baseline sales drop the position to LOW with a
+  "may be reduced/closed" method string ("[partial sale noted]" for S-partial rows);
+  sales of never-observed assets are skipped as unobservable (14 in the demo).
+- Ranged arithmetic only; open-range (max-less) purchases record presence without
+  a dishonest upper bound; midpoints are display-only via `normalize.midpoint`.
+- Net worth: household = FD household definition (self+spouse+joint+dependent);
+  estimate_min = Σ holding mins − Σ liability maxes, estimate_max = Σ holding
+  maxes − Σ liability mins; disclosed-None holdings count as zero. Certainty from
+  checkpoint completeness (HIGH/MEDIUM/LOW); no estimate without a parsed annual FD.
+- Derived rows (Position, NetWorthEstimate) are rebuilt deterministically each run
+  — always recomputable from parsed rows.
 
 ## Verification
-- [x] Tests run — `uv run pytest`: 42 passed (6 FD golden exact-match incl. 167-row
-      Bennett filing, fail2pass, garbage/PTR negative controls, cross-check anomaly,
-      store idempotency + version-bump replacement, verbatim asset dedupe; plus the
-      new nickname/ambiguity matcher tests).
+- [x] Tests run — `uv run pytest`: 52 passed (10 new M3 tests covering all six
+      golden scenarios, midpoint math, grouping confidence, household net-worth
+      sums, HIGH certainty assignment, deterministic rebuild).
 - [x] Lint run — `uv run ruff check .`: all checks passed.
-- [x] Type checks run — `uv run mypy app`: no issues found in 24 source files.
+- [x] Type checks run — `uv run mypy app`: no issues found in 28 source files.
 - [x] Manual verification completed —
-  - Live `parse --type A`: 15/15 FDs parsed (goal required ≥10), 931 rows;
-    per-filing stats logged. Idempotent re-run → all 931 unchanged.
-  - Live `parse` (PTR regression): still 15/15, 32 transactions.
-  - Relink measurement: +122 member-linked filings over the 1,116 baseline.
-  - Spot checks: IVV holding ($50,001–$100,000, income verbatim) → Bacon filing
-    (member-linked, parser house-fd-0.1); Freedom Mortgage liability row correct.
+  - `reconstruct` on the real DB: 32 midpoints backfilled; 185 positions
+    (167 MEDIUM, 18 LOW) across 537 members; net worth for 11 members
+    (10 HIGH, 1 MEDIUM) — the 11 = distinct members in the bounded parsed-FD
+    corpus; 14 unobservable sales skipped.
+  - Spot checks: Bacon net worth $97,035–$2,154,999 (HIGH, year 2025) consistent
+    with his holdings minus mortgage; Rick Allen (PTR-only, no parsed FD) → 18
+    LOW positions with honest no-baseline method strings.
+  - Determinism: second run rebuilds identical derived rows.
 
 ## Review
-- Summary of what changed: `app/parsing/house_fd.py` + `store_fd.py`; `Holding` and
-  `Liability` tables; matcher fallback chain + nickname groups + `Member.official_full`;
-  `parse --type A` CLI dispatch; 6 FD fixtures + golden JSON; 13 new tests (42 total).
+- Summary of what changed: new `app/intelligence/` package (normalize, checkpoint,
+  positions, net_worth); `reconstruct` CLI; 10 golden scenario tests.
 - Risks / follow-ups:
-  - FD form variants beyond the two seen (hand-written/scanned filings) are
-    unhandled — they will surface as low-confidence/zero-row parses when the corpus
-    grows; extend golden fixtures as they appear.
-  - `income_details` is verbatim text (per goal scope); structuring income types/
-    amounts belongs to M3 if net worth needs them numerically.
-  - Member matching is still name-based (no bioguide in the House index); ambiguous
-    same-name cases stay unmatched by design. Match rate should be re-measured after
-    corpus growth.
-  - The transactions section (Schedule B) is skipped per scope decision; if M3 finds
-    members with missing PTRs, revisit as M2d.
-  - Senate remains blocked (see M2a record).
-  - Next: M3 (normalization + position reconstruction + net worth) when the user asks.
+  - Positions/net worth cover only members with parsed filings (bounded corpus);
+    coverage grows with full-corpus downloads (run `ingest downloads --limit N`
+    and re-parse) — the machinery is corpus-size-independent.
+  - Treasury/CUSIP assets group by canonical name (no ticker in source); if M4
+    scoring needs security-level grouping, revisit with a curated map (never
+    silent).
+  - `income_details` on holdings stays verbatim; not used numerically anywhere.
+  - Baseline uses the LATEST FD only; multi-year FD history (for M5 point-in-time
+    validation) will need per-year baselines — the engine already takes an as-of
+    date for this purpose.
+  - Next: M4 (scoring + comments engine) when the user asks.

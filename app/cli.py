@@ -15,7 +15,7 @@ from sqlmodel import select
 
 from app.core.config import get_settings
 from app.core.logging import setup_logging
-from app.db.models import Filing
+from app.db.models import Filing, Member, NetWorthEstimate, Position, Transaction
 from app.db.session import init_db, session_scope
 from app.ingestion.downloads import download_filings
 from app.ingestion.house import fetch_index, index_zip_url, parse_index, upsert_filings
@@ -27,6 +27,10 @@ from app.ingestion.loaders import (
 )
 from app.ingestion.records import Counters, parse_committees, parse_members, parse_membership
 from app.ingestion.sources import COMMITTEES, LEGISLATORS, MEMBERSHIP, snapshot_datasets
+from app.intelligence.checkpoint import check_member
+from app.intelligence.net_worth import estimate_net_worth
+from app.intelligence.normalize import midpoint
+from app.intelligence.positions import reconstruct_member
 from app.parsing.house_fd import cross_check_fd, parse_fd_pdf
 from app.parsing.house_ptr import cross_check, parse_ptr_pdf
 from app.parsing.store import store_result
@@ -98,6 +102,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parse_parser.add_argument(
         "--limit", type=int, default=None, help="max filings to parse (default: all)"
+    )
+    subparsers.add_parser(
+        "reconstruct",
+        help="rebuild estimated positions and net-worth estimates (M3)",
     )
     subparsers.add_parser("score", help="(stub) run the scoring engine")
     subparsers.add_parser("dashboard", help="(stub) launch the Streamlit dashboard")
@@ -223,6 +231,59 @@ def _cmd_parse(filing_type_raw: str, limit: int | None) -> int:
     return 0
 
 
+def _cmd_reconstruct() -> int:
+    init_db()
+    with session_scope() as session:
+        # Backfill explicit midpoints on all parsed rows that have full ranges.
+        backfilled = 0
+        for tx in session.exec(select(Transaction)).all():
+            if tx.amount_midpoint is None:
+                tx.amount_midpoint = midpoint(tx.amount_min, tx.amount_max)
+                if tx.amount_midpoint is not None:
+                    backfilled += 1
+        logger.info("midpoints backfilled on %d transactions", backfilled)
+
+        # Deterministic rebuild: derived rows are always recomputable.
+        for position_row in session.exec(select(Position)).all():
+            session.delete(position_row)
+        for estimate_row in session.exec(select(NetWorthEstimate)).all():
+            session.delete(estimate_row)
+
+        members = session.exec(select(Member)).all()
+        total_positions = 0
+        certainty_totals: dict[str, int] = {}
+        net_worth_counts: dict[str, int] = {}
+        members_with_fd = 0
+        unobservable_sales = 0
+        for member in members:
+            assert member.id is not None
+            report = check_member(session, member.id)
+            stats = reconstruct_member(session, member.id, report)
+            total_positions += stats.positions
+            unobservable_sales += stats.unobservable_sales
+            for label, count in stats.by_certainty.items():
+                certainty_totals[label] = certainty_totals.get(label, 0) + count
+
+            estimate = estimate_net_worth(session, report)
+            if estimate is not None:
+                session.add(estimate)
+                members_with_fd += 1
+                label = estimate.certainty.value
+                net_worth_counts[label] = net_worth_counts.get(label, 0) + 1
+
+        logger.info(
+            "reconstruct complete: %d positions (%s) for %d members; "
+            "net worth for %d members (%s); %d unobservable sales skipped",
+            total_positions,
+            certainty_totals,
+            len(members),
+            members_with_fd,
+            net_worth_counts,
+            unobservable_sales,
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the CLI. Returns a process exit code."""
     args = build_parser().parse_args(argv)
@@ -245,6 +306,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command == "parse":
         return _cmd_parse(args.filing_type_raw, args.limit)
+    if args.command == "reconstruct":
+        return _cmd_reconstruct()
 
     # Stub subcommands: intentional no-ops until later phases implement them.
     logger.info("'%s' is not implemented yet (Phase 0 scaffold).", args.command)
