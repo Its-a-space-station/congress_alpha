@@ -14,7 +14,7 @@ from pathlib import Path
 
 from sqlmodel import Session, select
 
-from app.core.config import get_settings
+from app.core.config import get_secret, get_settings
 from app.core.logging import setup_logging
 from app.db.models import Filing, Member, NetWorthEstimate, Position, ScoreComponent, Transaction
 from app.db.session import init_db, session_scope
@@ -37,6 +37,7 @@ from app.intelligence.positions import reconstruct_member
 from app.intelligence.prices import fetch_daily_closes
 from app.intelligence.scoring import run_scoring
 from app.intelligence.services import export_rows
+from app.intelligence.tiingo import fetch_daily_closes_tiingo
 from app.intelligence.validation import run_validation, write_report
 from app.jobs.refresh import core_ingest_stages, run_refresh
 from app.parsing.house_fd import cross_check_fd, parse_fd_pdf
@@ -117,8 +118,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers.add_parser("score", help="run the policy-edge scoring engine (M4)")
     subparsers.add_parser("export", help="write CSV exports to data/exports (M5a)")
-    subparsers.add_parser(
+    validate_parser = subparsers.add_parser(
         "validate", help="validate PTR purchase signals vs forward returns (M5b)"
+    )
+    validate_parser.add_argument(
+        "--provider",
+        choices=["tiingo", "yahoo"],
+        default="tiingo",
+        help="price data provider (default: tiingo)",
     )
     refresh_parser = subparsers.add_parser(
         "refresh", help="run the full daily refresh pipeline (M5b)"
@@ -320,10 +327,16 @@ def _cmd_reconstruct() -> int:
 
 
 def _cmd_score() -> int:
+    settings = get_settings()
     init_db()
     with session_scope() as session:
         mappings = load_mappings()
-        run = run_scoring(session, mappings)
+        if get_secret("TIINGO_API_KEY"):
+            provider = lambda ticker: fetch_daily_closes_tiingo(ticker, settings.raw_dir)  # noqa: E731
+        else:
+            provider = None
+            logger.warning("TIINGO_API_KEY not set: track_record component scores 0")
+        run = run_scoring(session, mappings, price_provider=provider)
         rows = session.exec(
             select(ScoreComponent).where(
                 ScoreComponent.score_run_id == run.id,
@@ -449,13 +462,15 @@ def _cmd_export() -> int:
     return 0
 
 
-def _cmd_validate() -> int:
+def _cmd_validate(provider_name: str) -> int:
     settings = get_settings()
     init_db()
     with session_scope() as session:
-        report = run_validation(
-            session, lambda ticker: fetch_daily_closes(ticker, settings.raw_dir)
-        )
+        if provider_name == "tiingo":
+            provider = lambda ticker: fetch_daily_closes_tiingo(ticker, settings.raw_dir)  # noqa: E731
+        else:
+            provider = lambda ticker: fetch_daily_closes(ticker, settings.raw_dir)  # noqa: E731
+        report = run_validation(session, provider)
         json_path, md_path = write_report(report, settings.exports_dir)
         for metrics in report.horizons:
             mean_excess = (
@@ -525,7 +540,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "export":
         return _cmd_export()
     if args.command == "validate":
-        return _cmd_validate()
+        return _cmd_validate(args.provider)
     if args.command == "refresh":
         return _cmd_refresh(args.download_limit)
     if args.command == "note":

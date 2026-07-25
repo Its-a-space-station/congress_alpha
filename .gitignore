@@ -22,6 +22,9 @@ data/exports/*
 # macOS
 .DS_Store
 
+# Secrets — never commit
+.env
+
 # Reference material kept locally, not in the repo
 Papers on Coding/
 congress-alpha-starter.zip

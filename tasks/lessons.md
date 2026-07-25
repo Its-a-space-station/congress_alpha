@@ -24,3 +24,15 @@ Use append-only dated entries.
 - How to check next time: run the documented launch command verbatim in a
   clean subprocess (no pytest pythonpath) and curl/inspect the result before
   claiming an entrypoint works.
+
+## 2026-07-25 — Interactive commands must match the user's shell (zsh)
+- What went wrong: I gave the user a bash-style `read -s -p` command to paste
+  their Tiingo API key; their interactive shell is zsh (macOS default), which
+  failed with `read: -p: no coprocess`.
+- Preventive rule: commands meant for the USER's interactive terminal must be
+  zsh-compatible (prompt syntax `read -s "?prompt"`), or labeled for bash
+  explicitly. My own Bash tool runs bash, but the user's terminal is zsh —
+  test/give accordingly.
+- How to check next time: before handing over an interactive command, check
+  it parses under zsh (`zsh -n`), especially `read`, `printf` edge cases, and
+  bashisms like `select` or `shopt`.

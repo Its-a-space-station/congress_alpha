@@ -136,7 +136,8 @@ def test_watchlist_ordering_and_filters(session: Session) -> None:
     rows = watchlist(session)
     assert len(rows) == 2
     assert rows[0].member_name == "Overlap Case"  # highest composite first
-    assert rows[0].composite == 7.0
+    # 3.0 holdings + 4.0 trading + 0.0 repeat + ~0.2 relative_size + 0.0 track_record
+    assert rows[0].composite == pytest.approx(7.2002)
     assert rows[0].label is ScoreLabel.ELEVATED
     assert "Lockheed" in rows[0].top_details
 
@@ -157,9 +158,9 @@ def test_member_detail_assembly(session: Session) -> None:
     )
     detail = member_detail(session, scorer_id)
     assert detail is not None
-    assert detail.composite == 7.0
+    assert detail.composite == pytest.approx(7.2002)
     assert detail.label is ScoreLabel.ELEVATED
-    assert len(detail.components) == 3  # three non-composite components
+    assert len(detail.components) == 5  # five non-composite components (v2)
     trading = next(c for c in detail.components if c.component.endswith("trading_overlap"))
     assert "General Dynamics" in trading.details
     assert detail.net_worth_label is not None
@@ -187,7 +188,7 @@ def test_export_rows_content(session: Session, tmp_path: Path) -> None:
 
     header, rows = datasets["watchlist.csv"]
     assert header[0] == "member"
-    assert any(row[0] == "Overlap Case" and row[4] == 7.0 for row in rows)
+    assert any(row[0] == "Overlap Case" and row[4] == pytest.approx(7.2002) for row in rows)
 
     # CSV round-trip: what is written parses back identically.
     out = tmp_path / "watchlist.csv"

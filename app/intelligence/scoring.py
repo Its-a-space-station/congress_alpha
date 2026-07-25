@@ -18,28 +18,31 @@ ScoringConfig — bump CONFIG_VERSION on any change. No evolutionary tuning.
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sqlmodel import Session, select
 
-from app.core.enums import ScoreLabel
+from app.core.enums import ScoreLabel, TransactionType
 from app.db.models import (
     Asset,
     Committee,
     CommitteeMembership,
     Filing,
     Member,
+    NetWorthEstimate,
     Position,
     ScoreComponent,
     ScoreRun,
     Transaction,
 )
 from app.intelligence.mappings import Mappings
+from app.intelligence.validation import forward_return
 
 logger = logging.getLogger(__name__)
 
-CONFIG_VERSION = "policy-edge-0.1"
+CONFIG_VERSION = "policy-edge-0.2"
 PARSER_VERSION_TAG = "house-ptr-0.1+house-fd-0.1"
 
 
@@ -55,6 +58,17 @@ class ScoringConfig:
     recency_half_days: int = 365  # trades this recent get half weight; older ignored
     repeat_min_trades: int = 3  # overlapping trades needed for the repeat component
     repeat_weight: float = 2.0  # flat weight once the threshold is met
+    # relative_size: biggest single buy as a share of net worth (conservative
+    # ratio amount_min / net_worth_max), counted up to this cap.
+    relative_size_window_days: int = 365
+    relative_size_cap: float = 0.02
+    relative_size_weight: float = 2.0
+    # track_record: per-member mean 30d excess vs SPY, clamped to ±max_excess,
+    # gated on at least this many completed signals.
+    track_record_min_signals: int = 5
+    track_record_weight: float = 20.0
+    track_record_max_excess: float = 0.10
+    track_record_horizon_days: int = 30
     band_moderate: float = 3.0
     band_elevated: float = 6.0
     band_high: float = 10.0
@@ -199,6 +213,117 @@ def _repeat_component(count: int, config: ScoringConfig) -> tuple[float, str]:
     return 0.0, f"{count} overlapping trades (< threshold {config.repeat_min_trades})"
 
 
+def _relative_size_component(
+    session: Session, member_id: int, config: ScoringConfig, as_of: date
+) -> tuple[float, str]:
+    """Biggest single buy as a share of net worth (conservative bounds).
+
+    Uses the MAX single-trade ratio in the window — one outsized bet is the
+    signal; summing would double-count serial buyers (covered by repeat_pattern).
+    Zero with a "no basis" note when the member has no net-worth estimate.
+    """
+    net_worth = session.exec(
+        select(NetWorthEstimate)
+        .where(NetWorthEstimate.member_id == member_id)
+        .order_by(NetWorthEstimate.year.desc())  # type: ignore[attr-defined]
+    ).first()
+    if net_worth is None or not net_worth.estimate_max or net_worth.estimate_max <= 0:
+        return 0.0, "no basis (no net-worth estimate)"
+
+    window_start = as_of - timedelta(days=config.relative_size_window_days)
+    purchases = session.exec(
+        select(Transaction)
+        .join(Filing, Transaction.filing_id == Filing.id)  # type: ignore[arg-type]
+        .where(
+            Filing.member_id == member_id,
+            Filing.filing_type_raw == "P",
+            Transaction.transaction_type == TransactionType.PURCHASE,
+            Transaction.transaction_date >= window_start,  # type: ignore[operator]
+            Transaction.transaction_date <= as_of,  # type: ignore[operator]
+        )
+    ).all()
+
+    best_ratio = 0.0
+    best_amount = None
+    for tx in purchases:
+        if tx.amount_min is None:
+            continue
+        ratio = float(tx.amount_min) / float(net_worth.estimate_max)
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_amount = tx.amount_min
+    if best_amount is None:
+        return 0.0, "no purchases in window"
+
+    value = config.relative_size_weight * min(best_ratio / config.relative_size_cap, 1.0)
+    details = (
+        f"largest buy ${float(best_amount):,.0f} vs net-worth upper bound "
+        f"${float(net_worth.estimate_max):,.0f} = {best_ratio:.2%} "
+        f"(cap {config.relative_size_cap:.1%})"
+    )
+    return value, details
+
+
+def _track_record_component(
+    session: Session,
+    member_id: int,
+    config: ScoringConfig,
+    as_of: date,
+    price_provider: Callable[[str], dict[date, float]] | None,
+) -> tuple[float, str]:
+    """Per-member mean excess vs SPY on past purchases (point-in-time).
+
+    Only signals with t0 before as_of and a COMPLETED horizon window count;
+    price series are truncated to as_of. Gated on track_record_min_signals.
+    """
+    if price_provider is None:
+        return 0.0, "no price provider configured"
+
+    horizon = config.track_record_horizon_days
+    window_end = as_of - timedelta(days=horizon)
+    purchases = session.exec(
+        select(Transaction, Asset, Filing)
+        .join(Asset, Transaction.asset_id == Asset.id)  # type: ignore[arg-type]
+        .join(Filing, Transaction.filing_id == Filing.id)  # type: ignore[arg-type]
+        .where(
+            Filing.member_id == member_id,
+            Filing.filing_type_raw == "P",
+            Transaction.transaction_type == TransactionType.PURCHASE,
+            Filing.filing_date < window_end,  # type: ignore[operator]
+        )
+    ).all()
+
+    tickers = sorted(
+        {asset.ticker.upper() for _tx, asset, _f in purchases if asset.ticker} | {"SPY"}
+    )
+    series_by_ticker = {
+        ticker: {d: c for d, c in price_provider(ticker).items() if d <= as_of}
+        for ticker in tickers
+    }
+    benchmark = series_by_ticker.get("SPY", {})
+
+    excess_returns: list[float] = []
+    for _tx, asset, filing in purchases:
+        if not asset.ticker or filing.filing_date is None:
+            continue
+        series = series_by_ticker.get(asset.ticker.upper(), {})
+        stock_ret = forward_return(series, filing.filing_date, horizon)
+        bench_ret = forward_return(benchmark, filing.filing_date, horizon)
+        if stock_ret is not None and bench_ret is not None:
+            excess_returns.append(stock_ret - bench_ret)
+
+    n = len(excess_returns)
+    if n < config.track_record_min_signals:
+        return 0.0, f"insufficient history (n={n} < {config.track_record_min_signals})"
+    mean_excess = sum(excess_returns) / n
+    clamped = max(-config.track_record_max_excess, min(config.track_record_max_excess, mean_excess))
+    value = config.track_record_weight * clamped
+    details = f"n={n}, mean {horizon}d excess vs SPY {mean_excess:+.1%}"
+    if clamped != mean_excess:
+        details += f" (clamped to {clamped:+.1%})"
+    return value, details
+
+
 def score_member(
     session: Session,
     member: Member,
@@ -206,6 +331,7 @@ def score_member(
     config: ScoringConfig = DEFAULT_CONFIG,
     *,
     as_of: date | None = None,
+    price_provider: Callable[[str], dict[date, float]] | None = None,
 ) -> list[ScoreComponent]:
     """Compute (but do not persist) the component rows for one member."""
     assert member.id is not None
@@ -217,7 +343,13 @@ def score_member(
         overlap, config, effective_as_of
     )
     repeat_value, repeat_details = _repeat_component(trade_count, config)
-    composite = holdings_value + trading_value + repeat_value
+    size_value, size_details = _relative_size_component(
+        session, member.id, config, effective_as_of
+    )
+    track_value, track_details = _track_record_component(
+        session, member.id, config, effective_as_of, price_provider
+    )
+    composite = holdings_value + trading_value + repeat_value + size_value + track_value
 
     rows = [
         ScoreComponent(
@@ -244,10 +376,27 @@ def score_member(
         ScoreComponent(
             score_run_id=0,
             member_id=member.id,
+            component="relative_size",
+            value=size_value,
+            details=size_details,
+        ),
+        ScoreComponent(
+            score_run_id=0,
+            member_id=member.id,
+            component="track_record",
+            value=track_value,
+            details=track_details,
+        ),
+        ScoreComponent(
+            score_run_id=0,
+            member_id=member.id,
             component="composite",
             value=composite,
             label=label_for(composite, config),
-            details=f"= {holdings_value} + {trading_value} + {repeat_value}",
+            details=(
+                f"= {holdings_value} + {trading_value} + {repeat_value}"
+                f" + {size_value} + {track_value}"
+            ),
         ),
     ]
     return rows
@@ -259,6 +408,7 @@ def run_scoring(
     config: ScoringConfig = DEFAULT_CONFIG,
     *,
     as_of: date | None = None,
+    price_provider: Callable[[str], dict[date, float]] | None = None,
 ) -> ScoreRun:
     """Score every member and persist one ScoreRun with all component rows."""
     run = ScoreRun(
@@ -272,7 +422,9 @@ def run_scoring(
 
     members = session.exec(select(Member)).all()
     for member in members:
-        for row in score_member(session, member, mappings, config, as_of=as_of):
+        for row in score_member(
+            session, member, mappings, config, as_of=as_of, price_provider=price_provider
+        ):
             row.score_run_id = run.id
             session.add(row)
     return run
