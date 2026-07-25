@@ -213,6 +213,6 @@ def test_dashboard_script_runs_without_exceptions() -> None:
     """Streamlit AppTest smoke check: the app's main() must execute cleanly."""
     from streamlit.testing.v1 import AppTest
 
-    app = AppTest.from_file(str(PROJECT_ROOT / "app" / "dashboard" / "app.py"))
+    app = AppTest.from_file(str(PROJECT_ROOT / "app" / "dashboard" / "main.py"))
     app.run()
     assert not app.exception
