@@ -153,27 +153,125 @@ def _normalize(value: str) -> str:
     return re.sub(r"[^a-z ]", "", value.lower()).strip()
 
 
+# Curated nickname groups for filer-name matching (index names are often the
+# formal variant, e.g. "Richard W. Allen" vs dataset first-name "Rick").
+# Reviewable plain data; extend only with common English given-name groups.
+_NICKNAME_GROUPS = [
+    {"richard", "rick", "ricky", "dick", "rich"},
+    {"william", "bill", "billy", "will", "liam"},
+    {"robert", "bob", "bobby", "rob", "robby"},
+    {"james", "jim", "jimmy", "jamie"},
+    {"michael", "mike", "micky"},
+    {"john", "jack", "johnny", "jon"},
+    {"charles", "chuck", "charlie", "chas"},
+    {"thomas", "tom", "tommy"},
+    {"joseph", "joe", "joey"},
+    {"donald", "don", "donny"},
+    {"edward", "ed", "eddie", "ted", "teddy"},
+    {"katherine", "kathryn", "kate", "katie", "kathy", "catherine", "cathy"},
+    {"elizabeth", "liz", "beth", "betty", "betsy"},
+    {"margaret", "maggie", "meg", "peggy"},
+    {"patricia", "pat", "patty", "tricia"},
+    {"susan", "sue", "susie", "suzy"},
+    {"daniel", "dan", "danny"},
+    {"david", "dave", "davey"},
+    {"stephen", "steven", "steve"},
+    {"anthony", "tony"},
+    {"andrew", "andy", "drew"},
+    {"nicholas", "nick", "nicky"},
+    {"christopher", "chris", "topher"},
+    {"matthew", "matt", "matty"},
+    {"jonathan", "jon", "jonny"},
+    {"benjamin", "ben", "benny"},
+    {"samuel", "sam", "sammy"},
+    {"gregory", "greg"},
+    {"jeffrey", "jeff", "geoffrey"},
+    {"kenneth", "ken", "kenny"},
+    {"jacob", "jake"},
+    {"zachary", "zach", "zack"},
+    {"joshua", "josh"},
+    {"ronald", "ron", "ronnie"},
+    {"timothy", "tim", "timmy"},
+    {"douglas", "doug"},
+    {"gary", "garry"},
+    {"lawrence", "larry"},
+    {"gerald", "jerry", "gerry"},
+    {"walter", "walt", "wally"},
+    {"henry", "hank", "harry"},
+    {"frank", "frankie", "francis"},
+    {"raymond", "ray"},
+    {"peter", "pete"},
+    {"paul", "paulie"},
+    {"mark", "marc"},
+    {"virginia", "ginny", "ginger"},
+    {"deborah", "debra", "deb", "debbie"},
+    {"barbara", "barb", "barbie"},
+    {"jennifer", "jen", "jenny"},
+    {"nancy", "nan"},
+    {"carolyn", "caroline", "carol"},
+    {"judith", "judy"},
+    {"linda", "lindy"},
+    {"sandra", "sandy"},
+    {"pamela", "pam"},
+    {"rebecca", "becky"},
+    {"victoria", "vicky", "vicki"},
+    {"christina", "christine", "chris", "christy", "tina"},
+    {"michelle", "shelly"},
+    {"amanda", "mandy"},
+    {"angela", "angie"},
+]
+_TOKEN_TO_GROUP: dict[str, frozenset[str]] = {}
+for _group in _NICKNAME_GROUPS:
+    _frozen = frozenset(_group)
+    for _token in _group:
+        _TOKEN_TO_GROUP[_token] = _frozen
+
+
+def _tokens_equivalent(index_token: str, member_token: str) -> bool:
+    """First-name token equivalence: exact match or same nickname group."""
+    if index_token == member_token:
+        return True
+    group = _TOKEN_TO_GROUP.get(index_token)
+    return group is not None and member_token in group
+
+
+def _name_tokens(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [token for token in _normalize(value).split(" ") if token]
+
+
 def match_member(record: HouseFilingRecord, members: Sequence[Member]) -> int | None:
     """Match an index record to a Member id, or None when not confidently matched.
 
-    Deterministic rule: same normalized last name AND same state, then the
-    first whitespace token of the index first-name must equal the first token
-    of the member's first name. Exactly one candidate is required — zero or
-    many means unmatched (never force-linked).
+    Deterministic rule chain (House members only, same normalized last name,
+    same state; the index first-name token must match ONE of):
+    1. the member's first-name token (exact);
+    2. any official_full token (exact);
+    3. any of the above via the curated nickname groups.
+    Exactly one candidate member is required — zero or many means unmatched
+    (never force-linked).
     """
     state = record.state_district[:2]
     last = _normalize(record.last_name)
-    first_token = _normalize(record.first_name).split(" ")[0] if record.first_name else ""
+    index_tokens = _name_tokens(record.first_name)
+    index_first = index_tokens[0] if index_tokens else ""
 
-    matches = [
-        m
-        for m in members
-        if m.chamber == Chamber.HOUSE  # the House index only contains House filers
-        and m.state == state
-        and _normalize(m.last_name) == last
-        and first_token
-        and _normalize(m.first_name).split(" ")[0] == first_token
-    ]
+    matches = []
+    for member in members:
+        if member.chamber != Chamber.HOUSE or member.state != state:
+            continue
+        if _normalize(member.last_name) != last or not index_first:
+            continue
+        first_tokens = _name_tokens(member.first_name)
+        official_tokens = _name_tokens(member.official_full)
+        exact_hit = index_first in first_tokens or index_first in official_tokens
+        nickname_hit = any(
+            _tokens_equivalent(index_first, token)
+            for token in [*first_tokens, *official_tokens]
+        )
+        if exact_hit or nickname_hit:
+            matches.append(member)
     if len(matches) == 1:
         return matches[0].id
     return None

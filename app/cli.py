@@ -27,8 +27,10 @@ from app.ingestion.loaders import (
 )
 from app.ingestion.records import Counters, parse_committees, parse_members, parse_membership
 from app.ingestion.sources import COMMITTEES, LEGISLATORS, MEMBERSHIP, snapshot_datasets
+from app.parsing.house_fd import cross_check_fd, parse_fd_pdf
 from app.parsing.house_ptr import cross_check, parse_ptr_pdf
 from app.parsing.store import store_result
+from app.parsing.store_fd import store_fd_result
 
 logger = logging.getLogger(__name__)
 
@@ -184,24 +186,36 @@ def _cmd_parse(filing_type_raw: str, limit: int | None) -> int:
         totals = Counters()
         filings_with_rows = 0
         for filing in filings:
-            result = parse_ptr_pdf(Path(filing.local_path or ""))
-            warnings = cross_check(
-                result, filing_date=filing.filing_date, expected_filer=filing.filer_name
-            )
-            counters = store_result(session, filing, result)
-            if result.transactions:
+            if filing_type_raw == "A":
+                fd_result = parse_fd_pdf(Path(filing.local_path or ""))
+                warnings = cross_check_fd(fd_result)
+                counters = store_fd_result(session, filing, fd_result)
+                row_count = len(fd_result.holdings) + len(fd_result.liabilities)
+                detail = (
+                    f"{len(fd_result.holdings)} holdings + "
+                    f"{len(fd_result.liabilities)} liabilities"
+                )
+            else:
+                ptr_result = parse_ptr_pdf(Path(filing.local_path or ""))
+                warnings = cross_check(
+                    ptr_result, filing_date=filing.filing_date, expected_filer=filing.filer_name
+                )
+                counters = store_result(session, filing, ptr_result)
+                row_count = len(ptr_result.transactions)
+                detail = f"{row_count} tx"
+            if row_count:
                 filings_with_rows += 1
             totals.new += counters.new
             totals.unchanged += counters.unchanged
             logger.info(
-                "parse doc %s: %d tx (%s)%s",
+                "parse doc %s: %s (%s)%s",
                 filing.official_doc_id,
-                len(result.transactions),
+                detail,
                 counters.summary(),
                 f" warnings={warnings}" if warnings else "",
             )
         logger.info(
-            "parse complete: %d/%d filings yielded transactions; %s",
+            "parse complete: %d/%d filings yielded rows; %s",
             filings_with_rows,
             len(filings),
             totals.summary(),

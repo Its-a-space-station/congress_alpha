@@ -31,6 +31,7 @@ def upsert_members(session: Session, records: list[MemberRecord], source_url: st
         values = {
             "first_name": record.first_name,
             "last_name": record.last_name,
+            "official_full": record.official_full,
             "chamber": record.chamber,
             "party": record.party,
             "state": record.state,

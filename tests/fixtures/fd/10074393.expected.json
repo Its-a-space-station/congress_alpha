@@ -1,0 +1,140 @@
+{
+  "doc_id": "10074393",
+  "filer_name": "Nida Allam",
+  "state_district": "NC04",
+  "holdings": [
+    {
+      "account": null,
+      "owner": "self",
+      "asset_name": "Cash & Cash Investments",
+      "ticker": null,
+      "asset_type_code": "IH",
+      "value_min": "15001",
+      "value_max": "50000",
+      "income_details": "None",
+      "description": null,
+      "location": null,
+      "parse_confidence": 1.0,
+      "warnings": []
+    },
+    {
+      "account": null,
+      "owner": "self",
+      "asset_name": "DC1 529",
+      "ticker": null,
+      "asset_type_code": "5F",
+      "value_min": "15001",
+      "value_max": "50000",
+      "income_details": "Tax-Deferred",
+      "description": null,
+      "location": "NC",
+      "parse_confidence": 1.0,
+      "warnings": []
+    },
+    {
+      "account": null,
+      "owner": "self",
+      "asset_name": "DC2 529",
+      "ticker": null,
+      "asset_type_code": "5F",
+      "value_min": "1001",
+      "value_max": "15000",
+      "income_details": "Tax-Deferred",
+      "description": null,
+      "location": "NC",
+      "parse_confidence": 1.0,
+      "warnings": []
+    },
+    {
+      "account": "401k",
+      "owner": "self",
+      "asset_name": "iShares Silver Trust",
+      "ticker": "SLV",
+      "asset_type_code": "EF",
+      "value_min": "1001",
+      "value_max": "15000",
+      "income_details": "Tax-Deferred",
+      "description": null,
+      "location": null,
+      "parse_confidence": 1.0,
+      "warnings": []
+    },
+    {
+      "account": "401k",
+      "owner": "self",
+      "asset_name": "Nike, Inc. Common Stock",
+      "ticker": "NKE",
+      "asset_type_code": "ST",
+      "value_min": "1001",
+      "value_max": "15000",
+      "income_details": "Tax-Deferred",
+      "description": null,
+      "location": null,
+      "parse_confidence": 1.0,
+      "warnings": []
+    },
+    {
+      "account": "401k",
+      "owner": "self",
+      "asset_name": "SPDR Gold MiniShares Trust",
+      "ticker": "GLDM",
+      "asset_type_code": "EF",
+      "value_min": "1001",
+      "value_max": "15000",
+      "income_details": "Tax-Deferred",
+      "description": null,
+      "location": null,
+      "parse_confidence": 1.0,
+      "warnings": []
+    },
+    {
+      "account": null,
+      "owner": "self",
+      "asset_name": "https://fd.house.gov/reference/asset-type-codes.aspx.",
+      "ticker": null,
+      "asset_type_code": null,
+      "value_min": null,
+      "value_max": null,
+      "income_details": null,
+      "description": null,
+      "location": null,
+      "parse_confidence": 0.2,
+      "warnings": [
+        "no asset-type bracket on row",
+        "no value range parsed"
+      ]
+    }
+  ],
+  "liabilities": [
+    {
+      "owner": "joint",
+      "creditor_name": "Freedom Mortgage",
+      "liability_type": "mortgage",
+      "date_incurred": "2016",
+      "value_min": "100001",
+      "value_max": "250000",
+      "parse_confidence": 1.0,
+      "warnings": []
+    },
+    {
+      "owner": "spouse",
+      "creditor_name": "Federal Graduate PLUS Loans",
+      "liability_type": "Student Loans",
+      "date_incurred": "2017",
+      "value_min": "50001",
+      "value_max": "100000",
+      "parse_confidence": 1.0,
+      "warnings": []
+    },
+    {
+      "owner": "spouse",
+      "creditor_name": "Federal Direct Unsubsidized Loans",
+      "liability_type": "Student Loans",
+      "date_incurred": "2017",
+      "value_min": "50001",
+      "value_max": "100000",
+      "parse_confidence": 1.0,
+      "warnings": []
+    }
+  ]
+}

@@ -24,6 +24,7 @@ class MemberRecord:
     bioguide_id: str
     first_name: str
     last_name: str
+    official_full: str | None
     chamber: Chamber
     party: str
     state: str
@@ -118,6 +119,11 @@ def parse_members(path: Path) -> tuple[list[MemberRecord], int]:
                     bioguide_id=bioguide,
                     first_name=first,
                     last_name=last,
+                    official_full=(
+                        str(entry["name"]["official_full"])
+                        if entry["name"].get("official_full")
+                        else None
+                    ),
                     chamber=chamber,
                     party=str(current.get("party", "")),
                     state=str(current["state"]),

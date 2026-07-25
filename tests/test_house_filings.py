@@ -41,10 +41,21 @@ def _seed_members(session: Session) -> Member:
         bioguide_id="A000055",
         first_name="Robert",
         last_name="Aderholt",
+        official_full="Robert B. Aderholt",
         chamber=Chamber.HOUSE,
         party="Republican",
         state="AL",
         district="4",
+    )
+    allen = Member(
+        bioguide_id="A000372",
+        first_name="Rick",
+        last_name="Allen",
+        official_full="Rick W. Allen",
+        chamber=Chamber.HOUSE,
+        party="Republican",
+        state="GA",
+        district="12",
     )
     cantwell = Member(
         bioguide_id="C000127",
@@ -55,6 +66,7 @@ def _seed_members(session: Session) -> Member:
         state="WA",
     )
     session.add(aderholt)
+    session.add(allen)
     session.add(cantwell)
     session.flush()
     return aderholt
@@ -96,32 +108,54 @@ def test_parse_index_skips_malformed(tmp_path: Path) -> None:
     assert skipped == 1
 
 
+def _record(last: str, first: str, state_dst: str) -> HouseFilingRecord:
+    return HouseFilingRecord(
+        last_name=last,
+        first_name=first,
+        prefix=None,
+        suffix=None,
+        filing_type_raw="P",
+        state_district=state_dst,
+        index_year=2025,
+        filing_date=None,
+        doc_id="x",
+    )
+
+
 def test_match_member_rules(session: Session) -> None:
     aderholt = _seed_members(session)
-    senate_members = session.exec(select(Member).where(Member.chamber == Chamber.SENATE)).all()
-    members = [aderholt, *senate_members]
-
-    def record(last: str, first: str, state_dst: str) -> HouseFilingRecord:
-        return HouseFilingRecord(
-            last_name=last,
-            first_name=first,
-            prefix=None,
-            suffix=None,
-            filing_type_raw="P",
-            state_district=state_dst,
-            index_year=2025,
-            filing_date=None,
-            doc_id="x",
-        )
+    allen = session.exec(select(Member).where(Member.bioguide_id == "A000372")).one()
+    members = session.exec(select(Member)).all()
 
     # index "Robert B." matches member first-name token "Robert"
-    assert match_member(record("Aderholt", "Robert B.", "AL04"), members) == aderholt.id
+    assert match_member(_record("Aderholt", "Robert B.", "AL04"), members) == aderholt.id
+    # nickname: index "Richard W." matches member first-name "Rick"
+    assert match_member(_record("Allen", "Richard W.", "GA12"), members) == allen.id
     # unknown person -> unmatched
-    assert match_member(record("Aaron", "Richard", "MI04"), members) is None
+    assert match_member(_record("Aaron", "Richard", "MI04"), members) is None
     # senators are never matched in the House index, even with a name hit
-    assert match_member(record("Cantwell", "Maria", "WA98"), members) is None
-    # same last name + state but different first-name token -> unmatched
-    assert match_member(record("Aderholt", "Julius", "AL04"), members) is None
+    assert match_member(_record("Cantwell", "Maria", "WA98"), members) is None
+    # same last name + state but unrelated first-name token -> unmatched
+    assert match_member(_record("Aderholt", "Julius", "AL04"), members) is None
+
+
+def test_match_member_requires_unique_candidate(session: Session) -> None:
+    _seed_members(session)
+    session.add(
+        Member(
+            bioguide_id="X999999",
+            first_name="Ricky",
+            last_name="Allen",
+            chamber=Chamber.HOUSE,
+            party="Democrat",
+            state="GA",
+            district="1",
+        )
+    )
+    session.flush()
+    members = session.exec(select(Member)).all()
+    # "Richard" nickname-matches both Rick and Ricky -> ambiguous -> unmatched
+    assert match_member(_record("Allen", "Richard", "GA12"), members) is None
 
 
 def test_upsert_filings_dedupes_and_preserves_raw(session: Session) -> None:

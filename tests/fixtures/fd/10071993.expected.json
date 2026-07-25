@@ -1,0 +1,22 @@
+{
+  "doc_id": "10071993",
+  "filer_name": "Bushra Amiwala",
+  "state_district": "IL09",
+  "holdings": [
+    {
+      "account": null,
+      "owner": "self",
+      "asset_name": "Alphabet Inc. - Class A Common Stock",
+      "ticker": "GOOGL",
+      "asset_type_code": "ST",
+      "value_min": "50001",
+      "value_max": "100000",
+      "income_details": "$15,001 - $50,000 $15,001 - stock $50,000",
+      "description": "Stock",
+      "location": null,
+      "parse_confidence": 1.0,
+      "warnings": []
+    }
+  ],
+  "liabilities": []
+}

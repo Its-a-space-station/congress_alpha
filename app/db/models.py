@@ -30,6 +30,7 @@ class Member(SQLModel, table=True):
     bioguide_id: str = Field(index=True, unique=True)
     first_name: str
     last_name: str
+    official_full: str | None = None  # e.g. "Rick W. Allen" — used for matching
     chamber: Chamber
     party: str
     state: str
@@ -109,6 +110,40 @@ class Transaction(SQLModel, table=True):
     amount_max: Decimal | None = None
     amount_midpoint: Decimal | None = None
     raw_text: str  # preserved verbatim from the source filing
+    parse_confidence: float
+    parser_version: str
+
+
+class Holding(SQLModel, table=True):
+    """One parsed asset holding from an annual FD assets section (M2c)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    filing_id: int = Field(foreign_key="filing.id", index=True)
+    asset_id: int | None = Field(default=None, foreign_key="asset.id")
+    account: str | None = None  # investment-vehicle wrapper, e.g. "Fidelity IRA Rollover"
+    owner: OwnerType = OwnerType.UNDISCLOSED
+    value_min: Decimal | None = None
+    value_max: Decimal | None = None
+    income_details: str | None = None  # verbatim income column content
+    description: str | None = None  # verbatim "D:" annotation
+    location: str | None = None  # verbatim "L:" annotation
+    raw_text: str
+    parse_confidence: float
+    parser_version: str
+
+
+class Liability(SQLModel, table=True):
+    """One parsed liability from an annual FD liabilities section (M2c)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    filing_id: int = Field(foreign_key="filing.id", index=True)
+    owner: OwnerType = OwnerType.UNDISCLOSED
+    creditor_name: str  # verbatim
+    liability_type: str | None = None  # verbatim, e.g. "Mortgage on our home"
+    date_incurred: str | None = None  # verbatim, e.g. "July 2024"
+    value_min: Decimal | None = None
+    value_max: Decimal | None = None
+    raw_text: str
     parse_confidence: float
     parser_version: str
 
