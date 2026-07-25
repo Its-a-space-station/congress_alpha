@@ -1,8 +1,9 @@
-# Congress Alpha dashboard theme (M5a): near-black background, neon accents.
+# Congress Alpha dashboard theme: black + neon tech style
+# (reference: Canva "Black Neon Yellow Bright Green Gradient Tech Style").
 [theme]
 base = "dark"
-primaryColor = "#00E5FF"
-backgroundColor = "#0A0E14"
-secondaryBackgroundColor = "#131A26"
-textColor = "#E6F1F5"
+primaryColor = "#CCFF00"
+backgroundColor = "#050607"
+secondaryBackgroundColor = "#101418"
+textColor = "#E8F0E8"
 font = "sans serif"

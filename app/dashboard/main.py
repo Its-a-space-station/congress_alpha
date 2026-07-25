@@ -27,11 +27,113 @@ st.set_page_config(
 )
 
 _NEON_LABEL_COLORS = {
-    "low": "#3A7D8C",
-    "moderate": "#00E5FF",
-    "elevated": "#B2FF59",
+    "low": "#5A6B66",
+    "moderate": "#17E8A8",
+    "elevated": "#CCFF00",
     "high": "#FF4081",
 }
+
+_THEME_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Anton:ital@0;1&family=Archivo:wght@400;600&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Archivo', sans-serif;
+}
+
+/* Headline type: bold condensed italic caps, like the reference template. */
+h1, h2, h3, .ca-hero-title {
+    font-family: 'Anton', sans-serif !important;
+    font-style: italic;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+h2, h3 { color: #CCFF00; }
+
+/* Hero banner: purple -> green gradient, echoing the template's wave hero. */
+.ca-hero {
+    background:
+        radial-gradient(ellipse 90% 160% at 85% -20%, rgba(23, 232, 168, 0.45), transparent 60%),
+        radial-gradient(ellipse 70% 140% at 10% 120%, rgba(123, 47, 190, 0.55), transparent 60%),
+        linear-gradient(120deg, #0B0612 0%, #160B2A 45%, #062A1E 100%);
+    border: 1px solid rgba(204, 255, 0, 0.25);
+    border-radius: 14px;
+    padding: 2rem 2.2rem 1.6rem 2.2rem;
+    margin-bottom: 1.2rem;
+}
+.ca-hero-title {
+    color: #CCFF00;
+    font-size: 2.6rem;
+    line-height: 1.05;
+    margin: 0;
+}
+.ca-hero-sub {
+    color: #9FD8C9;
+    font-size: 0.95rem;
+    margin-top: 0.4rem;
+}
+
+/* Neon-outlined cards with a faint glow. */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border: 1px solid rgba(204, 255, 0, 0.28) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 0 18px rgba(204, 255, 0, 0.06);
+    background-color: #0B0F12 !important;
+}
+
+/* Section captions under headers read as thin neon rules. */
+.ca-rule {
+    border: none;
+    border-top: 2px solid #CCFF00;
+    width: 64px;
+    margin: 0.1rem 0 0.8rem 0;
+}
+
+/* Metrics get the neon treatment on the value. */
+[data-testid="stMetricValue"] {
+    color: #CCFF00 !important;
+    font-family: 'Anton', sans-serif;
+    font-style: italic;
+}
+
+/* Buttons: dark with neon border; hover fills neon. */
+.stButton > button {
+    background-color: transparent;
+    color: #CCFF00;
+    border: 1px solid #CCFF00;
+    border-radius: 6px;
+}
+.stButton > button:hover {
+    background-color: #CCFF00;
+    color: #050607;
+    border-color: #CCFF00;
+}
+
+/* Sidebar: keep it black with a neon edge. */
+[data-testid="stSidebar"] {
+    background-color: #07090B;
+    border-right: 1px solid rgba(204, 255, 0, 0.18);
+}
+</style>
+"""
+
+
+def _inject_theme_css() -> None:
+    st.markdown(_THEME_CSS, unsafe_allow_html=True)
+
+
+def _hero() -> None:
+    st.markdown(
+        """
+        <div class="ca-hero">
+          <p class="ca-hero-title">Congress Alpha</p>
+          <p class="ca-hero-sub">Local-first congressional disclosure research —
+          conservative policy-overlap signals, fully decomposable. Not an
+          accusation of wrongdoing.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 @st.cache_resource
@@ -52,6 +154,7 @@ def _label_badge(label: str | None) -> str:
 
 def _watchlist_view() -> None:
     st.header("Watchlist — policy-edge ranking")
+    st.markdown("<hr class='ca-rule'/>", unsafe_allow_html=True)
     st.caption(
         "Conservative committee-overlap signal. Not an accusation of wrongdoing; "
         "every score decomposes into named contributors."
@@ -186,6 +289,7 @@ def _member_detail_view() -> None:
 
 def _sector_view() -> None:
     st.header("Sector clusters")
+    st.markdown("<hr class='ca-rule'/>", unsafe_allow_html=True)
     st.caption("Members whose committee sectors overlap their holdings/trades.")
     with _session() as session:
         clusters = sector_clusters(session)
@@ -211,6 +315,8 @@ def _sector_view() -> None:
 
 
 def main() -> None:
+    _inject_theme_css()
+    _hero()
     st.sidebar.title("Congress Alpha")
     st.sidebar.caption("Local-first disclosure research")
     view = st.sidebar.radio(
