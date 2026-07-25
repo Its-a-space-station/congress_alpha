@@ -1,0 +1,59 @@
+- id:
+    bioguide: C000127
+  name:
+    first: Maria
+    last: Cantwell
+    official_full: Maria Cantwell
+  terms:
+  - type: rep
+    start: '1993-01-05'
+    end: '1995-01-03'
+    state: WA
+    district: 1
+    party: Democrat
+  - type: sen
+    start: '2025-01-03'
+    end: '2031-01-03'
+    state: WA
+    class: 1
+    party: Democrat
+- id:
+    bioguide: K000367
+  name:
+    first: Amy
+    last: Klobuchar
+  terms:
+  - type: sen
+    start: '2025-01-03'
+    end: '2031-01-03'
+    state: MN
+    class: 1
+    party: Democrat
+- id:
+    bioguide: A000001
+  name:
+    first: Ada
+    last: Example
+  terms:
+  - type: rep
+    start: '2025-01-03'
+    end: '2027-01-03'
+    state: CA
+    district: 12
+    party: Independent
+- id:
+    bioguide: B000002
+  name:
+    first: Bob
+    last: Sample
+  terms:
+  - type: rep
+    start: '2025-01-03'
+    end: '2027-01-03'
+    state: AK
+    party: Republican
+- id:
+    bioguide: BROKEN1
+  name:
+    first: No
+    last: Terms

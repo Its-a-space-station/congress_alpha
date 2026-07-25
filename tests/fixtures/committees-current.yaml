@@ -1,0 +1,13 @@
+- type: house
+  name: House Committee on Agriculture
+  thomas_id: HSAG
+  url: https://agriculture.house.gov/
+- type: senate
+  name: Senate Committee on Agriculture, Nutrition, and Forestry
+  thomas_id: SSAF
+  url: https://www.agriculture.senate.gov/
+- type: joint
+  name: Joint Economic Committee
+  thomas_id: JECO
+- type: house
+  name: Committee Missing Code

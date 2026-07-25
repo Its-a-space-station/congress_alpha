@@ -1,0 +1,29 @@
+HSAG:
+- name: Amy Klobuchar
+  party: majority
+  rank: 1
+  title: Chair
+  bioguide: K000367
+- name: Ada Example
+  party: minority
+  rank: 1
+  bioguide: A000001
+- name: Ghost Member
+  party: majority
+  rank: 2
+  bioguide: Z999999
+HSAG15:
+- name: Ada Example
+  party: majority
+  rank: 1
+  bioguide: A000001
+SSAF:
+- name: Amy Klobuchar
+  party: majority
+  rank: 3
+  bioguide: K000367
+JECO:
+- name: Bob Sample
+  party: minority
+  rank: 2
+  bioguide: B000002

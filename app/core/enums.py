@@ -13,6 +13,7 @@ class Chamber(StrEnum):
 
     HOUSE = "house"
     SENATE = "senate"
+    JOINT = "joint"  # joint committees only; members are always house/senate
 
 
 class FilingType(StrEnum):
