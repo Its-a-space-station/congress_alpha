@@ -104,6 +104,7 @@ class Transaction(SQLModel, table=True):
     owner: OwnerType = OwnerType.UNDISCLOSED
     transaction_type: TransactionType
     transaction_date: date | None = None
+    notification_date: date | None = None  # STOCK Act notification date on PTRs
     amount_min: Decimal | None = None
     amount_max: Decimal | None = None
     amount_midpoint: Decimal | None = None

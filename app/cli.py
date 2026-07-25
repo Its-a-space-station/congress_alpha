@@ -9,9 +9,13 @@ and `dashboard` remain stubs for later milestones.
 import argparse
 import logging
 from datetime import date
+from pathlib import Path
+
+from sqlmodel import select
 
 from app.core.config import get_settings
 from app.core.logging import setup_logging
+from app.db.models import Filing
 from app.db.session import init_db, session_scope
 from app.ingestion.downloads import download_filings
 from app.ingestion.house import fetch_index, index_zip_url, parse_index, upsert_filings
@@ -21,8 +25,10 @@ from app.ingestion.loaders import (
     upsert_members,
     upsert_memberships,
 )
-from app.ingestion.records import parse_committees, parse_members, parse_membership
+from app.ingestion.records import Counters, parse_committees, parse_members, parse_membership
 from app.ingestion.sources import COMMITTEES, LEGISLATORS, MEMBERSHIP, snapshot_datasets
+from app.parsing.house_ptr import cross_check, parse_ptr_pdf
+from app.parsing.store import store_result
 
 logger = logging.getLogger(__name__)
 
@@ -70,10 +76,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="maximum number of documents to download (default: 25)",
     )
     downloads_parser.add_argument(
+        "--type",
+        dest="filing_type_raw",
+        default=None,
+        help="restrict to one upstream filing-type code (e.g. P for PTRs)",
+    )
+    downloads_parser.add_argument(
         "--refresh", action="store_true", help="re-download documents"
     )
 
-    subparsers.add_parser("parse", help="(stub) parse downloaded filings")
+    parse_parser = subparsers.add_parser(
+        "parse", help="parse downloaded filings into Transaction rows"
+    )
+    parse_parser.add_argument(
+        "--type",
+        dest="filing_type_raw",
+        default="P",
+        help="upstream filing-type code to parse (default: P = PTRs)",
+    )
+    parse_parser.add_argument(
+        "--limit", type=int, default=None, help="max filings to parse (default: all)"
+    )
     subparsers.add_parser("score", help="(stub) run the scoring engine")
     subparsers.add_parser("dashboard", help="(stub) launch the Streamlit dashboard")
     return parser
@@ -131,12 +154,58 @@ def _cmd_ingest_filings(years: list[int], refresh: bool) -> int:
     return 0
 
 
-def _cmd_ingest_downloads(limit: int, refresh: bool) -> int:
+def _cmd_ingest_downloads(limit: int, refresh: bool, filing_type_raw: str | None) -> int:
     settings = get_settings()
     init_db()
     with session_scope() as session:
-        counters = download_filings(session, settings.raw_dir, limit=limit, refresh=refresh)
+        counters = download_filings(
+            session, settings.raw_dir, limit=limit, refresh=refresh,
+            filing_type_raw=filing_type_raw,
+        )
         logger.info("ingest downloads: %s", counters.summary())
+    return 0
+
+
+def _cmd_parse(filing_type_raw: str, limit: int | None) -> int:
+    init_db()
+    with session_scope() as session:
+        query = (
+            select(Filing)
+            .where(
+                Filing.filing_type_raw == filing_type_raw,
+                Filing.local_path.is_not(None),  # type: ignore[union-attr]
+            )
+            .order_by(Filing.id)  # type: ignore[arg-type]
+        )
+        if limit is not None:
+            query = query.limit(limit)
+        filings = session.exec(query).all()
+
+        totals = Counters()
+        filings_with_rows = 0
+        for filing in filings:
+            result = parse_ptr_pdf(Path(filing.local_path or ""))
+            warnings = cross_check(
+                result, filing_date=filing.filing_date, expected_filer=filing.filer_name
+            )
+            counters = store_result(session, filing, result)
+            if result.transactions:
+                filings_with_rows += 1
+            totals.new += counters.new
+            totals.unchanged += counters.unchanged
+            logger.info(
+                "parse doc %s: %d tx (%s)%s",
+                filing.official_doc_id,
+                len(result.transactions),
+                counters.summary(),
+                f" warnings={warnings}" if warnings else "",
+            )
+        logger.info(
+            "parse complete: %d/%d filings yielded transactions; %s",
+            filings_with_rows,
+            len(filings),
+            totals.summary(),
+        )
     return 0
 
 
@@ -157,7 +226,11 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_ingest_committees(refresh=args.refresh)
         if args.ingest_target == "filings":
             return _cmd_ingest_filings(args.years or _default_filing_years(), args.refresh)
-        return _cmd_ingest_downloads(limit=args.limit, refresh=args.refresh)
+        return _cmd_ingest_downloads(
+            limit=args.limit, refresh=args.refresh, filing_type_raw=args.filing_type_raw
+        )
+    if args.command == "parse":
+        return _cmd_parse(args.filing_type_raw, args.limit)
 
     # Stub subcommands: intentional no-ops until later phases implement them.
     logger.info("'%s' is not implemented yet (Phase 0 scaffold).", args.command)

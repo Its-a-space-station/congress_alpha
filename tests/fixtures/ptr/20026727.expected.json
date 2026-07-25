@@ -1,0 +1,76 @@
+{
+  "doc_id": "20026727",
+  "filer_name": "Hon. Richard W. Allen",
+  "state_district": "GA12",
+  "transactions": [
+    {
+      "owner": "spouse",
+      "asset_name": "AutoZone, Inc. Common Stock",
+      "ticker": "AZO",
+      "asset_type_code": "ST",
+      "transaction_type": "purchase",
+      "transaction_date": "2025-01-17",
+      "notification_date": "2025-02-04",
+      "amount_min": "15001",
+      "amount_max": "50000",
+      "parse_confidence": 1.0,
+      "warnings": []
+    },
+    {
+      "owner": "self",
+      "asset_name": "US Treasury Bill 912797JR9",
+      "ticker": null,
+      "asset_type_code": "GS",
+      "transaction_type": "sale",
+      "transaction_date": "2025-01-08",
+      "notification_date": "2025-02-04",
+      "amount_min": "15001",
+      "amount_max": "50000",
+      "parse_confidence": 0.8,
+      "warnings": [
+        "partial sale (position only partially closed)"
+      ]
+    },
+    {
+      "owner": "self",
+      "asset_name": "US Treasury Bill 912797JR9",
+      "ticker": null,
+      "asset_type_code": "GS",
+      "transaction_type": "sale",
+      "transaction_date": "2025-01-08",
+      "notification_date": "2025-02-04",
+      "amount_min": "15001",
+      "amount_max": "50000",
+      "parse_confidence": 0.8,
+      "warnings": [
+        "partial sale (position only partially closed)"
+      ]
+    },
+    {
+      "owner": "self",
+      "asset_name": "US Treasury Bill 91282CHB0",
+      "ticker": null,
+      "asset_type_code": "GS",
+      "transaction_type": "purchase",
+      "transaction_date": "2025-01-27",
+      "notification_date": "2025-02-04",
+      "amount_min": "100001",
+      "amount_max": "250000",
+      "parse_confidence": 0.9,
+      "warnings": []
+    },
+    {
+      "owner": "self",
+      "asset_name": "US Treasury Bill 91282CKE0",
+      "ticker": null,
+      "asset_type_code": "GS",
+      "transaction_type": "purchase",
+      "transaction_date": "2025-01-27",
+      "notification_date": "2025-02-04",
+      "amount_min": "100001",
+      "amount_max": "250000",
+      "parse_confidence": 0.9,
+      "warnings": []
+    }
+  ]
+}

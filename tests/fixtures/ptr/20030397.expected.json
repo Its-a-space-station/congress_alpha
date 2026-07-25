@@ -1,0 +1,22 @@
+{
+  "doc_id": "20030397",
+  "filer_name": "Hon. Jake Auchincloss",
+  "state_district": "MA04",
+  "transactions": [
+    {
+      "owner": "spouse",
+      "asset_name": "State Street Corporation Common Stock",
+      "ticker": "STT",
+      "asset_type_code": "ST",
+      "transaction_type": "sale",
+      "transaction_date": "2025-05-16",
+      "notification_date": "2025-05-20",
+      "amount_min": "15001",
+      "amount_max": "50000",
+      "parse_confidence": 0.9,
+      "warnings": [
+        "partial sale (position only partially closed)"
+      ]
+    }
+  ]
+}

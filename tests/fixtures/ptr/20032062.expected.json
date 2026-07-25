@@ -1,0 +1,20 @@
+{
+  "doc_id": "20032062",
+  "filer_name": "Hon. Robert B. Aderholt",
+  "state_district": "AL04",
+  "transactions": [
+    {
+      "owner": "self",
+      "asset_name": "GSK plc American Depositary Shares",
+      "ticker": "GSK",
+      "asset_type_code": "ST",
+      "transaction_type": "sale",
+      "transaction_date": "2025-07-28",
+      "notification_date": "2025-08-11",
+      "amount_min": "1001",
+      "amount_max": "15000",
+      "parse_confidence": 1.0,
+      "warnings": []
+    }
+  ]
+}

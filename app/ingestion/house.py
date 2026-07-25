@@ -3,7 +3,8 @@
 Verified 2026-07-24 (see tasks/todo.md M2a notes):
 - Annual index ZIP: public_disc/financial-pdfs/{year}FD.zip containing
   {year}FD.xml with one <Member> record per filing (not per person).
-- All filing documents (including PTRs): public_disc/financial-pdfs/{year}/{DocID}.pdf
+- Documents: PTRs under public_disc/ptr-pdfs/{year}/{DocID}.pdf, all other
+  types under public_disc/financial-pdfs/{year}/{DocID}.pdf
 - Index is republished daily; FilingType is a single-letter code. Codes mapped
   below are confirmed by the Clerk's own search-result labels; all other codes
   map to OTHER with the raw code preserved (never guessed).
@@ -28,6 +29,7 @@ from app.ingestion.records import Counters
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://disclosures-clerk.house.gov/public_disc/financial-pdfs"
+PTR_BASE_URL = "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs"
 INDEX_SUBDIR = "house_index"
 
 # Confirmed against the Clerk's search-result labels (P -> "PTR",
@@ -48,8 +50,14 @@ def index_zip_url(year: int) -> str:
     return f"{BASE_URL}/{year}FD.zip"
 
 
-def doc_pdf_url(year: int, doc_id: str) -> str:
-    """URL of a filing's PDF document."""
+def doc_pdf_url(year: int, doc_id: str, filing_type_raw: str | None = None) -> str:
+    """URL of a filing's PDF document.
+
+    PTRs ("P") live under ptr-pdfs/; all other filing types live under
+    financial-pdfs/ (verified 2026-07-24 with doc 20032062 vs 30023997).
+    """
+    if filing_type_raw == "P":
+        return f"{PTR_BASE_URL}/{year}/{doc_id}.pdf"
     return f"{BASE_URL}/{year}/{doc_id}.pdf"
 
 

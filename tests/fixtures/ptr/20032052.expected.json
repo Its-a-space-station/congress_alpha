@@ -1,0 +1,46 @@
+{
+  "doc_id": "20032052",
+  "filer_name": "Hon. Richard W. Allen",
+  "state_district": "GA12",
+  "transactions": [
+    {
+      "owner": "spouse",
+      "asset_name": "Accenture plc Class A Ordinary Shares",
+      "ticker": "ACN",
+      "asset_type_code": "ST",
+      "transaction_type": "sale",
+      "transaction_date": "2025-08-19",
+      "notification_date": "2025-09-08",
+      "amount_min": "1001",
+      "amount_max": "15000",
+      "parse_confidence": 1.0,
+      "warnings": []
+    },
+    {
+      "owner": "spouse",
+      "asset_name": "Atmos Energy Corporation Common Stock",
+      "ticker": "ATO",
+      "asset_type_code": "ST",
+      "transaction_type": "purchase",
+      "transaction_date": "2025-08-19",
+      "notification_date": "2025-09-08",
+      "amount_min": "15001",
+      "amount_max": "50000",
+      "parse_confidence": 1.0,
+      "warnings": []
+    },
+    {
+      "owner": "self",
+      "asset_name": "US Treasury Bill 91282CHB0 DUE 5/15/26 3.625%",
+      "ticker": null,
+      "asset_type_code": "GS",
+      "transaction_type": "purchase",
+      "transaction_date": "2025-08-19",
+      "notification_date": "2025-09-08",
+      "amount_min": "100001",
+      "amount_max": "250000",
+      "parse_confidence": 0.9,
+      "warnings": []
+    }
+  ]
+}
