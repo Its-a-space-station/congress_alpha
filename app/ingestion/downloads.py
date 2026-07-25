@@ -1,0 +1,55 @@
+"""Downloader stage (M2a): fetch filing documents to data/raw with checksums.
+
+Idempotent: filings that already have `local_path` are skipped. Rate-paced to
+be polite to the host. The command is generic over the whole filings table;
+callers bound the work with `limit`.
+"""
+
+import logging
+import time
+from pathlib import Path
+
+from sqlmodel import Session, select
+
+from app.core.enums import Chamber
+from app.db.models import Filing
+from app.ingestion.house import doc_pdf_url
+from app.ingestion.http import fetch, sha256_bytes
+from app.ingestion.records import Counters
+
+logger = logging.getLogger(__name__)
+
+DOWNLOAD_SUBDIR = "filings"
+PACE_SECONDS = 0.5
+
+
+def download_filings(
+    session: Session,
+    raw_dir: Path,
+    *,
+    chamber: Chamber = Chamber.HOUSE,
+    limit: int = 25,
+    refresh: bool = False,
+) -> Counters:
+    """Download up to `limit` not-yet-downloaded filings; record path + sha256."""
+    pending = session.exec(
+        select(Filing)
+        .where(Filing.chamber == chamber, Filing.local_path.is_(None))  # type: ignore[union-attr]
+        .order_by(Filing.id)  # type: ignore[arg-type]
+        .limit(limit)
+    ).all()
+    counters = Counters(total=len(pending))
+
+    for filing in pending:
+        if not (filing.official_doc_id and filing.index_year):
+            counters.skipped += 1
+            logger.warning("skipping filing id=%s: no doc id or index year", filing.id)
+            continue
+        url = doc_pdf_url(filing.index_year, filing.official_doc_id)
+        path = raw_dir / DOWNLOAD_SUBDIR / chamber.value / f"{filing.official_doc_id}.pdf"
+        payload = fetch(url, path, refresh=refresh)
+        filing.local_path = str(path)
+        filing.checksum = sha256_bytes(payload)
+        counters.new += 1
+        time.sleep(PACE_SECONDS)
+    return counters

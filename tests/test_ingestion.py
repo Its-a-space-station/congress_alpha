@@ -104,4 +104,5 @@ def test_committee_ingestion_end_to_end(session: Session) -> None:
         "member": 4,
         "committee": 3,
         "committee_membership": 4,
+        "filing": 0,
     }

@@ -10,7 +10,7 @@ import logging
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from app.db.models import Committee, CommitteeMembership, Member
+from app.db.models import Committee, CommitteeMembership, Filing, Member
 from app.ingestion.records import (
     CommitteeRecord,
     Counters,
@@ -126,4 +126,5 @@ def table_counts(session: Session) -> dict[str, int]:
         "committee_membership": int(
             session.exec(select(func.count()).select_from(CommitteeMembership)).one()
         ),
+        "filing": int(session.exec(select(func.count()).select_from(Filing)).one()),
     }

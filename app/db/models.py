@@ -59,12 +59,21 @@ class CommitteeMembership(SQLModel, table=True):
 
 
 class Filing(SQLModel, table=True):
-    """One official disclosure filing (annual FD, PTR, amendment, ...)."""
+    """One official disclosure filing (annual FD, PTR, amendment, ...).
+
+    `member_id` is nullable: filings that cannot be matched to a known member
+    with sufficient confidence are still recorded (never force-linked). The
+    verbatim upstream type code and filer name are always preserved.
+    """
 
     id: int | None = Field(default=None, primary_key=True)
-    member_id: int = Field(foreign_key="member.id", index=True)
+    member_id: int | None = Field(default=None, foreign_key="member.id", index=True)
     chamber: Chamber
     filing_type: FilingType
+    filing_type_raw: str | None = None  # verbatim upstream code, e.g. "P"
+    filer_name: str | None = None  # name as it appears in the index
+    state_district: str | None = None  # e.g. "AL04"
+    index_year: int | None = None  # filing-index year (PDF URL path year)
     filing_date: date | None = None
     period_start: date | None = None
     period_end: date | None = None

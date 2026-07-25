@@ -25,6 +25,7 @@ class FilingType(StrEnum):
     CANDIDATE = "candidate"
     TERMINATION = "termination"
     EXTENSION = "extension"
+    OTHER = "other"  # raw code preserved on the Filing row; never guessed
 
 
 class OwnerType(StrEnum):

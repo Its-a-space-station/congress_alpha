@@ -8,10 +8,13 @@ and `dashboard` remain stubs for later milestones.
 
 import argparse
 import logging
+from datetime import date
 
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.db.session import init_db, session_scope
+from app.ingestion.downloads import download_filings
+from app.ingestion.house import fetch_index, index_zip_url, parse_index, upsert_filings
 from app.ingestion.loaders import (
     table_counts,
     upsert_committees,
@@ -42,6 +45,33 @@ def build_parser() -> argparse.ArgumentParser:
             action="store_true",
             help="re-download raw snapshots instead of using the cache",
         )
+
+    filings_parser = ingest_subparsers.add_parser(
+        "filings", help="ingest the House filing index into Filing rows"
+    )
+    filings_parser.add_argument(
+        "--year",
+        type=int,
+        action="append",
+        dest="years",
+        help="filing year to ingest (repeatable; default: previous + current year)",
+    )
+    filings_parser.add_argument(
+        "--refresh", action="store_true", help="re-download index snapshots"
+    )
+
+    downloads_parser = ingest_subparsers.add_parser(
+        "downloads", help="download filing documents to data/raw"
+    )
+    downloads_parser.add_argument(
+        "--limit",
+        type=int,
+        default=25,
+        help="maximum number of documents to download (default: 25)",
+    )
+    downloads_parser.add_argument(
+        "--refresh", action="store_true", help="re-download documents"
+    )
 
     subparsers.add_parser("parse", help="(stub) parse downloaded filings")
     subparsers.add_parser("score", help="(stub) run the scoring engine")
@@ -82,6 +112,34 @@ def _cmd_ingest_committees(refresh: bool) -> int:
     return 0
 
 
+def _default_filing_years() -> list[int]:
+    """Previous and current calendar year — covers recent filings of current members."""
+    today = date.today()
+    return [today.year - 1, today.year]
+
+
+def _cmd_ingest_filings(years: list[int], refresh: bool) -> int:
+    settings = get_settings()
+    init_db()
+    with session_scope() as session:
+        for year in years:
+            xml_path = fetch_index(settings.raw_dir, year, refresh=refresh)
+            records, skipped = parse_index(xml_path)
+            counters = upsert_filings(session, records, index_zip_url(year))
+            counters.skipped += skipped
+            logger.info("ingest filings %d: %s", year, counters.summary())
+    return 0
+
+
+def _cmd_ingest_downloads(limit: int, refresh: bool) -> int:
+    settings = get_settings()
+    init_db()
+    with session_scope() as session:
+        counters = download_filings(session, settings.raw_dir, limit=limit, refresh=refresh)
+        logger.info("ingest downloads: %s", counters.summary())
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the CLI. Returns a process exit code."""
     args = build_parser().parse_args(argv)
@@ -95,7 +153,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "ingest":
         if args.ingest_target == "members":
             return _cmd_ingest_members(refresh=args.refresh)
-        return _cmd_ingest_committees(refresh=args.refresh)
+        if args.ingest_target == "committees":
+            return _cmd_ingest_committees(refresh=args.refresh)
+        if args.ingest_target == "filings":
+            return _cmd_ingest_filings(args.years or _default_filing_years(), args.refresh)
+        return _cmd_ingest_downloads(limit=args.limit, refresh=args.refresh)
 
     # Stub subcommands: intentional no-ops until later phases implement them.
     logger.info("'%s' is not implemented yet (Phase 0 scaffold).", args.command)
