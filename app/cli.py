@@ -11,11 +11,11 @@ import logging
 from datetime import date
 from pathlib import Path
 
-from sqlmodel import select
+from sqlmodel import Session, select
 
 from app.core.config import get_settings
 from app.core.logging import setup_logging
-from app.db.models import Filing, Member, NetWorthEstimate, Position, Transaction
+from app.db.models import Filing, Member, NetWorthEstimate, Position, ScoreComponent, Transaction
 from app.db.session import init_db, session_scope
 from app.ingestion.downloads import download_filings
 from app.ingestion.house import fetch_index, index_zip_url, parse_index, upsert_filings
@@ -28,9 +28,12 @@ from app.ingestion.loaders import (
 from app.ingestion.records import Counters, parse_committees, parse_members, parse_membership
 from app.ingestion.sources import COMMITTEES, LEGISLATORS, MEMBERSHIP, snapshot_datasets
 from app.intelligence.checkpoint import check_member
+from app.intelligence.mappings import load_mappings
 from app.intelligence.net_worth import estimate_net_worth
 from app.intelligence.normalize import midpoint
+from app.intelligence.notes import add_note, list_notes
 from app.intelligence.positions import reconstruct_member
+from app.intelligence.scoring import run_scoring
 from app.parsing.house_fd import cross_check_fd, parse_fd_pdf
 from app.parsing.house_ptr import cross_check, parse_ptr_pdf
 from app.parsing.store import store_result
@@ -107,7 +110,21 @@ def build_parser() -> argparse.ArgumentParser:
         "reconstruct",
         help="rebuild estimated positions and net-worth estimates (M3)",
     )
-    subparsers.add_parser("score", help="(stub) run the scoring engine")
+    subparsers.add_parser("score", help="run the policy-edge scoring engine (M4)")
+
+    note_parser = subparsers.add_parser("note", help="manage notes on members/filings")
+    note_subparsers = note_parser.add_subparsers(dest="note_command", required=True)
+    note_add = note_subparsers.add_parser("add", help="add a note")
+    note_add.add_argument("--text", required=True, help="note body")
+    note_add.add_argument("--member", dest="bioguide", default=None, help="member bioguide id")
+    note_add.add_argument(
+        "--filing", dest="doc_id", default=None, help="filing official doc id"
+    )
+    note_list = note_subparsers.add_parser("list", help="list notes")
+    note_list.add_argument("--member", dest="bioguide", default=None, help="member bioguide id")
+    note_list.add_argument(
+        "--filing", dest="doc_id", default=None, help="filing official doc id"
+    )
     subparsers.add_parser("dashboard", help="(stub) launch the Streamlit dashboard")
     return parser
 
@@ -284,6 +301,121 @@ def _cmd_reconstruct() -> int:
     return 0
 
 
+def _cmd_score() -> int:
+    init_db()
+    with session_scope() as session:
+        mappings = load_mappings()
+        run = run_scoring(session, mappings)
+        rows = session.exec(
+            select(ScoreComponent).where(
+                ScoreComponent.score_run_id == run.id,
+                ScoreComponent.component == "composite",
+            )
+        ).all()
+
+        distribution: dict[str, int] = {}
+        for row in rows:
+            label = row.label.value if row.label else "unlabeled"
+            distribution[label] = distribution.get(label, 0) + 1
+        logger.info(
+            "score run %d complete (config %s): label distribution %s",
+            run.id,
+            run.config_version,
+            distribution,
+        )
+
+        top = sorted(rows, key=lambda r: r.value, reverse=True)[:5]
+        for row in top:
+            if row.value <= 0:
+                continue
+            member = session.get(Member, row.member_id)
+            components = session.exec(
+                select(ScoreComponent).where(
+                    ScoreComponent.score_run_id == run.id,
+                    ScoreComponent.member_id == row.member_id,
+                    ScoreComponent.component != "composite",
+                )
+            ).all()
+            best = max(components, key=lambda c: c.value)
+            logger.info(
+                "top overlap: %s %s composite=%.1f (%s) best=%s: %s",
+                member.first_name if member else "?",
+                member.last_name if member else "?",
+                row.value,
+                row.label,
+                best.component,
+                best.details,
+            )
+    return 0
+
+
+def _resolve_member(session: Session, bioguide: str) -> Member | None:
+    result: Member | None = session.exec(
+        select(Member).where(Member.bioguide_id == bioguide)
+    ).first()
+    return result
+
+
+def _cmd_note_add(text: str, bioguide: str | None, doc_id: str | None) -> int:
+    init_db()
+    with session_scope() as session:
+        member_id = None
+        filing_id = None
+        if bioguide:
+            member = _resolve_member(session, bioguide)
+            if member is None:
+                logger.error("no member with bioguide id %s", bioguide)
+                return 2
+            member_id = member.id
+        if doc_id:
+            filing = session.exec(
+                select(Filing).where(Filing.official_doc_id == doc_id)
+            ).first()
+            if filing is None:
+                logger.error("no filing with doc id %s", doc_id)
+                return 2
+            filing_id = filing.id
+        if member_id is None and filing_id is None:
+            logger.error("provide --member and/or --filing")
+            return 2
+        note = add_note(session, text, member_id=member_id, filing_id=filing_id)
+        logger.info("note %d added", note.id)
+    return 0
+
+
+def _cmd_note_list(bioguide: str | None, doc_id: str | None) -> int:
+    init_db()
+    with session_scope() as session:
+        member_id = None
+        filing_id = None
+        if bioguide:
+            member = _resolve_member(session, bioguide)
+            if member is None:
+                logger.error("no member with bioguide id %s", bioguide)
+                return 2
+            member_id = member.id
+        if doc_id:
+            filing = session.exec(
+                select(Filing).where(Filing.official_doc_id == doc_id)
+            ).first()
+            if filing is None:
+                logger.error("no filing with doc id %s", doc_id)
+                return 2
+            filing_id = filing.id
+        notes = list_notes(session, member_id=member_id, filing_id=filing_id)
+        for note in notes:
+            logger.info(
+                "[%s] note %d (member=%s filing=%s): %s",
+                note.created_at.date(),
+                note.id,
+                note.member_id,
+                note.filing_id,
+                note.body,
+            )
+        logger.info("%d note(s)", len(notes))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the CLI. Returns a process exit code."""
     args = build_parser().parse_args(argv)
@@ -308,6 +440,12 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_parse(args.filing_type_raw, args.limit)
     if args.command == "reconstruct":
         return _cmd_reconstruct()
+    if args.command == "score":
+        return _cmd_score()
+    if args.command == "note":
+        if args.note_command == "add":
+            return _cmd_note_add(args.text, args.bioguide, args.doc_id)
+        return _cmd_note_list(args.bioguide, args.doc_id)
 
     # Stub subcommands: intentional no-ops until later phases implement them.
     logger.info("'%s' is not implemented yet (Phase 0 scaffold).", args.command)

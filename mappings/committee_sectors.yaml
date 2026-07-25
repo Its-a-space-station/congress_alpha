@@ -1,0 +1,25 @@
+# Committee -> sector mapping (curated seed, M4).
+#
+# Rules: a committee maps to a sector ONLY when its jurisdiction clearly
+# covers that sector (per the committee's own stated jurisdiction). Broad
+# committees (Appropriations, Budget, Ways and Means, Finance, Oversight,
+# Foreign Affairs, Rules, Ethics, Intelligence, admin/joint/caucus bodies)
+# are deliberately UNMAPPED — they contribute nothing rather than guessing.
+# Review diffs carefully; bump mapping_version on every change.
+mapping_version: "1.0"
+
+committees:
+  HSAG: [agriculture]                        # House Agriculture
+  SSAF: [agriculture]                        # Senate Agriculture, Nutrition, Forestry
+  HSAS: [defense]                            # House Armed Services
+  SSAS: [defense]                            # Senate Armed Services
+  HSBA: [finance, real_estate]               # House Financial Services
+  SSBK: [finance, real_estate]               # Senate Banking, Housing, Urban Affairs
+  HSIF: [energy, healthcare, technology, telecom, consumer]  # House Energy & Commerce
+  SSCM: [technology, telecom, transportation, consumer]      # Senate Commerce, Science, Transportation
+  SSEG: [energy, natural_resources]          # Senate Energy and Natural Resources
+  HSII: [natural_resources, energy]          # House Natural Resources
+  SSHR: [healthcare]                         # Senate Health, Education, Labor, Pensions
+  HSSY: [technology]                         # House Science, Space, and Technology
+  HSPW: [transportation]                     # House Transportation and Infrastructure
+  SSEV: [energy, natural_resources, transportation]  # Senate Environment and Public Works

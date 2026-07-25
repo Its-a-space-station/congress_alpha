@@ -1,0 +1,132 @@
+# Ticker -> sector mapping (curated seed, M4).
+#
+# Rules: single sector per ticker, only where the company's primary business
+# is unambiguous. Broad-market and multi-sector ETFs/funds are deliberately
+# UNMAPPED — they contribute nothing rather than guessing. Sector ETFs map
+# to their sector. Review diffs carefully; bump mapping_version on change.
+mapping_version: "1.0"
+
+tickers:
+  # defense
+  LMT: defense
+  RTX: defense
+  GD: defense
+  HWM: defense
+  PPA: defense      # aerospace & defense ETF
+  # healthcare
+  GSK: healthcare
+  ABBV: healthcare
+  JNJ: healthcare
+  LLY: healthcare
+  MRK: healthcare
+  MDT: healthcare
+  TMO: healthcare
+  BSX: healthcare
+  HUM: healthcare
+  UNH: healthcare
+  ELV: healthcare
+  ISRG: healthcare
+  KVUE: healthcare
+  IBB: healthcare   # biotech ETF
+  # finance
+  GS: finance
+  JPM: finance
+  MS: finance
+  PNC: finance
+  SCHW: finance
+  STT: finance
+  BLK: finance
+  ICE: finance
+  CME: finance
+  MA: finance
+  V: finance
+  AFRM: finance
+  RKT: finance
+  TRV: finance
+  PGR: finance
+  HIG: finance
+  MMC: finance
+  THG: finance
+  KBWB: finance     # bank ETF
+  # technology
+  AAPL: technology
+  MSFT: technology
+  GOOGL: technology
+  AMZN: technology
+  META: technology
+  NVDA: technology
+  AMD: technology
+  INTC: technology
+  AVGO: technology
+  TXN: technology
+  QCOM: technology
+  LRCX: technology
+  MU: technology
+  ORCL: technology
+  CRM: technology
+  NOW: technology
+  INTU: technology
+  PANW: technology
+  DDOG: technology
+  SNOW: technology
+  MDB: technology
+  ANET: technology
+  CIEN: technology
+  CSCO: technology
+  HPQ: technology
+  DELL: technology
+  PLTR: technology
+  RDDT: technology
+  DBX: technology
+  ROKU: technology
+  SPOT: technology
+  SMH: technology   # semiconductor ETF
+  SKYY: technology  # cloud computing ETF
+  # energy
+  CVX: energy
+  COP: energy
+  PSX: energy
+  SLB: energy
+  OKE: energy
+  KMI: energy
+  SU: energy
+  NEE: energy
+  ETR: energy
+  PPL: energy
+  SRE: energy
+  FUTY: energy      # utilities ETF
+  # transportation
+  DAL: transportation
+  UBER: transportation
+  UPS: transportation
+  UNP: transportation
+  IFRA: transportation  # US infrastructure ETF
+  PAVE: transportation  # infrastructure ETF
+  # consumer
+  COST: consumer
+  HD: consumer
+  MCD: consumer
+  NKE: consumer
+  PG: consumer
+  KO: consumer
+  PEP: consumer
+  MDLZ: consumer
+  MNST: consumer
+  TJX: consumer
+  ROST: consumer
+  AZO: consumer
+  CASY: consumer
+  HAS: consumer
+  HLT: consumer
+  LYV: consumer
+  TKO: consumer
+  CHD: consumer
+  KDP: consumer
+  TSLA: consumer
+  # real estate
+  O: real_estate
+  PLD: real_estate
+  ITB: real_estate  # home construction ETF
+  # natural resources
+  AEM: natural_resources      # Agnico Eagle (gold mining)
+  VAW: natural_resources      # materials ETF
