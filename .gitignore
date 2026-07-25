@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# uv virtualenv (reproducible from uv.lock — which IS committed)
+.venv/
+
+# Local databases and runtime data
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/raw/*
+data/processed/*
+data/exports/*
+!data/**/.gitkeep
+
+# macOS
+.DS_Store
+
+# Reference material kept locally, not in the repo
+Papers on Coding/
+congress-alpha-starter.zip
