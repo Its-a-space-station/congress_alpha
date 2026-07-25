@@ -1,59 +1,73 @@
-# Task: M5a Streamlit dashboard + service layer + CSV exports
+# Task: M5b historical validation + daily refresh job (MVP complete)
 
 ## Context
-- Fifth milestone, first half (per `tasks/plan.md` §3-M5 items 5.1–5.3): the
-  user-facing dashboard. Executed as a goal-mode run. User design direction:
-  dark background with neon accents. Historical validation + refresh job are M5b.
+- Final MVP milestone (per `tasks/plan.md` §3-M5 items 5.4–5.5 + paper upgrades).
+  Executed as a goal-mode run. User authorized read-only price-data GETs;
+  scheduler choice: `refresh` CLI + cron (CLAUDE.md allows "APScheduler or cron").
 
 ## Plan
-- [x] Service layer (`app/intelligence/services.py`): watchlist (ranked, filters),
-      member_detail (score breakdown, positions, net worth, transactions, notes),
-      sector_clusters (read-model aggregation), export_rows.
-- [x] Dark + neon theme (`.streamlit/config.toml`, committed): near-black
-      `#0A0E14`, neon cyan `#00E5FF`, label colors per label band.
-- [x] Streamlit app (`app/dashboard/app.py`): Watchlist / Member detail /
-      Sector clusters views; explainability strings everywhere; notes add form.
-- [x] CLI `export` → `data/exports/{watchlist,positions,transactions}.csv`.
-- [x] Tests: service layer, export content, theme validity, AppTest smoke check.
-- [x] Run gates + launch smoke check.
+- [x] Price provider (`app/intelligence/prices.py`) with raw caching + injection.
+- [x] Validation harness (`app/intelligence/validation.py`): point-in-time PTR
+      purchase signals vs SPY, decomposed metrics + report writer.
+- [x] CLI `validate` → `data/exports/validation_report.{json,md}`.
+- [x] Refresh job (`app/jobs/refresh.py` + CLI `refresh`): 9-stage pipeline,
+      loud per-stage failure.
+- [x] Cron/launchd documentation in README.md.
+- [x] Tests: exact return math, Wilson CI, lookahead guard, thin-sample flag,
+      refresh runner, report files.
+- [x] Run gates + demo both commands.
 - [x] Update this file with verification details and review notes.
 
-## Notes
-- Architecture rule honored: the dashboard imports only service-layer functions
-  (plus the notes service); no SQL or scoring logic in UI code — this is also
-  what makes the UI testable headlessly.
-- Watchlist rows come from the LATEST ScoreRun; sector filter matches the
-  structured details strings ("sector via [...]") — documented in services.py.
-- sector_clusters is a read model over memberships + positions + curated
-  mappings (no re-scoring, no weights).
-- Label badges use neon colors per band (low/moderate/elevated/high) with the
-  neutral mission wording and a standing disclaimer caption on the watchlist.
-- Launch command: `uv run streamlit run app/dashboard/app.py`.
+## Notes — price provider incident (honest record)
+- Original plan: stooq.com. On 2026-07-25 stooq served a JavaScript
+  proof-of-work anti-bot challenge to plain GETs (both default and custom UAs).
+  We do NOT circumvent bot challenges. Switched to Yahoo Finance's public v8
+  chart endpoint (the JSON API Yahoo's own site calls; works with the
+  congress-alpha UA, no challenge). Responses cached under `data/raw/prices/`;
+  adjusted closes used when present. Provider is injectable, tests synthetic.
+- This is exactly the "external source blocked → record and adapt" path from
+  the goal's stop rule; the change is confined to `prices.py`.
+
+## Notes — validation design (per plan's paper upgrades)
+- Point-in-time discipline: t0 = FILING date (first public knowledge); entry =
+  first close on/after t0; exit = last close on/before t0+horizon (30/90d);
+  excess = stock return − SPY return over the same window; data-as-of recorded.
+- Decomposed metrics only: counts, mean excess, hit rate with Wilson 95% CI,
+  overlap/no-overlap cohorts, per-quarter breakdown, explicit thin-sample flag
+  (<10). Scope label: "PTR purchase signal validation"; full score-history
+  validation needs historical committee rosters (follow-up).
+- First REAL result (bounded corpus, 2026-07-25): 6 signals — 30d mean excess
+  −0.2% (hit rate 50%), 90d mean excess −0.1% (hit rate 33%), both flagged
+  THIN SAMPLE. The harness correctly reports insufficient evidence rather than
+  dressing up a tiny sample.
 
 ## Verification
-- [x] Tests run — `uv run pytest`: 65 passed (watchlist ordering + all filters,
-      member detail assembly, sector cluster aggregation, export CSV round-trip,
-      theme config validity, Streamlit AppTest: app executes with no exceptions).
+- [x] Tests run — `uv run pytest`: 72 passed (exact forward-return math,
+      point-in-time entry guard, Wilson CI values, thin-sample flags, signal
+      collection + overlap cohorts, synthetic end-to-end, report files, refresh
+      runner loud-failure).
 - [x] Lint run — `uv run ruff check .`: all checks passed.
-- [x] Type checks run — `uv run mypy app`: no issues found in 33 source files.
+- [x] Type checks run — `uv run mypy app`: no issues found in 36 source files.
 - [x] Manual verification completed —
-  - Launch smoke check: headless `streamlit run` answered HTTP 200 on
-    `/healthz` and `/`; clean startup log, graceful stop.
-  - `export`: watchlist.csv 537 rows (Rick Allen top-ranked, 7.5 elevated,
-    with decomposition), positions.csv 185, transactions.csv 32.
-  - Visual/aesthetic review is the user's to make (per goal scope): open the
-    app with `uv run streamlit run app/dashboard/app.py`.
+  - `validate`: real prices for all corpus tickers + SPY; report files written
+    with decomposed metrics + CI + thin-sample flag.
+  - `refresh`: 9/9 stages (members → committees → filings → downloads →
+    parse-ptr → parse-fd → reconstruct → score → export) with counters; one
+    404 document handled gracefully (logged, skipped, batch continued).
+  - Cron line verified documented in README.md.
 
 ## Review
-- Summary of what changed: service layer + 6 tests (65 total), dashboard app
-  with three views, dark+neon theme config, export CLI.
+- Summary of what changed: prices.py, validation.py, jobs/refresh.py, CLI
+  `validate` + `refresh`, README sections (dashboard/refresh/validation + cron),
+  7 new tests (72 total).
 - Risks / follow-ups:
-  - The dashboard reads the latest ScoreRun only; historical run comparison
-    belongs to M5b validation.
-  - Notes save immediately on submit (no edit/delete UI yet — CLI covers add/
-    list; edit/delete could be M5b or a small follow-up).
-  - Member-detail selector lists all scored members (537) — fine locally;
-    add search if the corpus grows.
-  - `streamlit` emits a usage-stats notice on first run; can be silenced via
-    `browser.gatherUsageStats = false` in `.streamlit/config.toml` if desired.
-  - Next: M5b (historical validation + daily refresh job) when the user asks.
+  - Corpus growth: the refresh run downloaded 100 more filings organically;
+    parse coverage (and thus signal count for validation) grows with each run.
+    Re-run `refresh` periodically (or set up the cron line).
+  - Yahoo is an unofficial endpoint — if it ever bot-gates, do NOT circumvent;
+    reassess providers (documented in prices.py).
+  - Score-history validation (composite policy-edge vs returns) needs
+    historical committee rosters — candidate for M6+.
+  - Senate remains blocked (M2a record).
+  - **MVP milestones M0–M5 are now complete.** Next steps would be M6+
+    extensions (13F clustering, USASpending, web migration) only if the user asks.

@@ -34,8 +34,11 @@ from app.intelligence.net_worth import estimate_net_worth
 from app.intelligence.normalize import midpoint
 from app.intelligence.notes import add_note, list_notes
 from app.intelligence.positions import reconstruct_member
+from app.intelligence.prices import fetch_daily_closes
 from app.intelligence.scoring import run_scoring
 from app.intelligence.services import export_rows
+from app.intelligence.validation import run_validation, write_report
+from app.jobs.refresh import core_ingest_stages, run_refresh
 from app.parsing.house_fd import cross_check_fd, parse_fd_pdf
 from app.parsing.house_ptr import cross_check, parse_ptr_pdf
 from app.parsing.store import store_result
@@ -114,6 +117,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers.add_parser("score", help="run the policy-edge scoring engine (M4)")
     subparsers.add_parser("export", help="write CSV exports to data/exports (M5a)")
+    subparsers.add_parser(
+        "validate", help="validate PTR purchase signals vs forward returns (M5b)"
+    )
+    refresh_parser = subparsers.add_parser(
+        "refresh", help="run the full daily refresh pipeline (M5b)"
+    )
+    refresh_parser.add_argument(
+        "--download-limit",
+        type=int,
+        default=100,
+        help="max filing documents to download per run (default: 100)",
+    )
 
     note_parser = subparsers.add_parser("note", help="manage notes on members/filings")
     note_subparsers = note_parser.add_subparsers(dest="note_command", required=True)
@@ -434,6 +449,53 @@ def _cmd_export() -> int:
     return 0
 
 
+def _cmd_validate() -> int:
+    settings = get_settings()
+    init_db()
+    with session_scope() as session:
+        report = run_validation(
+            session, lambda ticker: fetch_daily_closes(ticker, settings.raw_dir)
+        )
+        json_path, md_path = write_report(report, settings.exports_dir)
+        for metrics in report.horizons:
+            mean_excess = (
+                f"{metrics.mean_excess_return:+.1%}"
+                if metrics.mean_excess_return is not None
+                else "n/a"
+            )
+            logger.info(
+                "validation %dd: %d signals, mean excess %s, hit rate %s%s",
+                metrics.horizon_days,
+                metrics.signals,
+                mean_excess,
+                f"{metrics.hit_rate:.0%}" if metrics.hit_rate is not None else "n/a",
+                " (THIN SAMPLE)" if metrics.thin_sample else "",
+            )
+        logger.info("validation report written: %s, %s", json_path, md_path)
+    return 0
+
+
+def _cmd_refresh(download_limit: int) -> int:
+    settings = get_settings()
+    stages = core_ingest_stages(settings.raw_dir) + [
+        ("filings", lambda: _cmd_ingest_filings(_default_filing_years(), refresh=False)),
+        (
+            "downloads",
+            lambda: _cmd_ingest_downloads(
+                limit=download_limit, refresh=False, filing_type_raw=None
+            ),
+        ),
+        ("parse-ptr", lambda: _cmd_parse("P", None)),
+        ("parse-fd", lambda: _cmd_parse("A", None)),
+        ("reconstruct", _cmd_reconstruct),
+        ("score", _cmd_score),
+        ("export", _cmd_export),
+    ]
+    completed = run_refresh(stages)
+    logger.info("refresh complete: %d/%d stages", len(completed), len(stages))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the CLI. Returns a process exit code."""
     args = build_parser().parse_args(argv)
@@ -462,6 +524,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_score()
     if args.command == "export":
         return _cmd_export()
+    if args.command == "validate":
+        return _cmd_validate()
+    if args.command == "refresh":
+        return _cmd_refresh(args.download_limit)
     if args.command == "note":
         if args.note_command == "add":
             return _cmd_note_add(args.text, args.bioguide, args.doc_id)
