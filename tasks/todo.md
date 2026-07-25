@@ -1,65 +1,59 @@
-# Task: M4 policy-edge scoring engine + notes engine
+# Task: M5a Streamlit dashboard + service layer + CSV exports
 
 ## Context
-- Fourth milestone per `tasks/plan.md` §3-M4: a deterministic, decomposable
-  committee-overlap ("policy-edge") score plus a manual notes engine. Executed
-  as a goal-mode run. No network needed.
+- Fifth milestone, first half (per `tasks/plan.md` §3-M5 items 5.1–5.3): the
+  user-facing dashboard. Executed as a goal-mode run. User design direction:
+  dark background with neon accents. Historical validation + refresh job are M5b.
 
 ## Plan
-- [x] Curated versioned mapping files (`mappings/committee_sectors.yaml`,
-      `mappings/ticker_sectors.yaml`) — user scope decision: curated seeds only,
-      unmapped = no contribution.
-- [x] Mappings loader with version tracking (`app/intelligence/mappings.py`).
-- [x] Scoring engine + typed config (`app/intelligence/scoring.py`).
-- [x] Notes service (`app/intelligence/notes.py`).
-- [x] CLI: real `score`; `note add` / `note list`.
-- [x] Golden scoring tests incl. decomposability + notes CRUD.
-- [x] Run gates + demo on the real DB.
+- [x] Service layer (`app/intelligence/services.py`): watchlist (ranked, filters),
+      member_detail (score breakdown, positions, net worth, transactions, notes),
+      sector_clusters (read-model aggregation), export_rows.
+- [x] Dark + neon theme (`.streamlit/config.toml`, committed): near-black
+      `#0A0E14`, neon cyan `#00E5FF`, label colors per label band.
+- [x] Streamlit app (`app/dashboard/app.py`): Watchlist / Member detail /
+      Sector clusters views; explainability strings everywhere; notes add form.
+- [x] CLI `export` → `data/exports/{watchlist,positions,transactions}.csv`.
+- [x] Tests: service layer, export content, theme validity, AppTest smoke check.
+- [x] Run gates + launch smoke check.
 - [x] Update this file with verification details and review notes.
 
-## Notes — scoring design (per CLAUDE.md and the plan's paper upgrades)
-- Three first-class components, each a ScoreComponent row with a human-readable
-  details string naming its contributors: `committee_sector_holdings_overlap`
-  (2.0/sector + 1.0/asset), `committee_sector_trading_overlap` (same weights,
-  scaled by average trade recency: full ≤90d, half ≤365d, ignored beyond),
-  `repeat_pattern` (flat 2.0 at ≥3 overlapping trades). Composite = exact sum;
-  tests assert the equality and the contributor strings.
-- All knobs in `ScoringConfig` (`CONFIG_VERSION = policy-edge-0.1`); the ScoreRun
-  records config + mapping versions (committee@1.0+ticker@1.0) + parser versions.
-  No tuning without a version bump; no evolutionary search (plan rule).
-- Mapping curation rules (documented in the files): only unambiguous jurisdictions
-  (broad committees like Appropriations/Ways and Means/Intelligence unmapped);
-  single sector per ticker; broad-market ETFs unmapped; sector ETFs mapped.
-- Label bands: LOW < 3 ≤ MODERATE < 6 ≤ ELEVATED < 10 ≤ HIGH. Neutral wording
-  per the mission guardrails.
+## Notes
+- Architecture rule honored: the dashboard imports only service-layer functions
+  (plus the notes service); no SQL or scoring logic in UI code — this is also
+  what makes the UI testable headlessly.
+- Watchlist rows come from the LATEST ScoreRun; sector filter matches the
+  structured details strings ("sector via [...]") — documented in services.py.
+- sector_clusters is a read model over memberships + positions + curated
+  mappings (no re-scoring, no weights).
+- Label badges use neon colors per band (low/moderate/elevated/high) with the
+  neutral mission wording and a standing disclaimer caption on the watchlist.
+- Launch command: `uv run streamlit run app/dashboard/app.py`.
 
 ## Verification
-- [x] Tests run — `uv run pytest`: 59 passed (golden scenario with exact component
-      values and decomposition strings, repeat threshold, recency decay-out,
-      band boundaries, run determinism, mappings loader, notes CRUD + validation).
+- [x] Tests run — `uv run pytest`: 65 passed (watchlist ordering + all filters,
+      member detail assembly, sector cluster aggregation, export CSV round-trip,
+      theme config validity, Streamlit AppTest: app executes with no exceptions).
 - [x] Lint run — `uv run ruff check .`: all checks passed.
-- [x] Type checks run — `uv run mypy app`: no issues found in 31 source files.
+- [x] Type checks run — `uv run mypy app`: no issues found in 33 source files.
 - [x] Manual verification completed —
-  - `score` on the real DB: run 1 with label distribution {low: 536, elevated: 1};
-    top overlap = Rick Allen composite 7.5 (elevated), decomposition showing
-    HSIF (Energy & Commerce) holdings overlap via AutoZone (consumer) and Intuit
-    (technology) — matches his real committee assignment.
-  - `note add` / `note list` round-trip by member, by filing, and member+filing.
-  - Conservatism is structural: members without parsed filings or mapped
-    committees/assets score 0 (LOW).
+  - Launch smoke check: headless `streamlit run` answered HTTP 200 on
+    `/healthz` and `/`; clean startup log, graceful stop.
+  - `export`: watchlist.csv 537 rows (Rick Allen top-ranked, 7.5 elevated,
+    with decomposition), positions.csv 185, transactions.csv 32.
+  - Visual/aesthetic review is the user's to make (per goal scope): open the
+    app with `uv run streamlit run app/dashboard/app.py`.
 
 ## Review
-- Summary of what changed: mappings/ seeds + loader, scoring engine + config,
-  notes service, real `score` + `note` CLI, 7 new tests (59 total).
+- Summary of what changed: service layer + 6 tests (65 total), dashboard app
+  with three views, dark+neon theme config, export CLI.
 - Risks / follow-ups:
-  - Score coverage is corpus-bound: members without parsed filings score 0.
-    Interpretation of LOW must include "no data" — consider an explicit
-    data-coverage field on the composite row in a future iteration.
-  - Mapping seeds are v1.0 and will need periodic review as the corpus grows
-    (new tickers, committee roster changes); bump mapping_version each time.
-  - Committee/company (exact-name) overlap is currently approximated by the
-    ticker map; a dedicated company-jurisdiction curation could be M4.1 if the
-    user wants finer granularity.
-  - Senate remains out of scope (blocked in M2a); Senate committees exist in the
-    DB and are mapped, ready when Senate data unblocks.
-  - Next: M5 (dashboard + historical validation) when the user asks.
+  - The dashboard reads the latest ScoreRun only; historical run comparison
+    belongs to M5b validation.
+  - Notes save immediately on submit (no edit/delete UI yet — CLI covers add/
+    list; edit/delete could be M5b or a small follow-up).
+  - Member-detail selector lists all scored members (537) — fine locally;
+    add search if the corpus grows.
+  - `streamlit` emits a usage-stats notice on first run; can be silenced via
+    `browser.gatherUsageStats = false` in `.streamlit/config.toml` if desired.
+  - Next: M5b (historical validation + daily refresh job) when the user asks.

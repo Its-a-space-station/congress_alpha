@@ -1,0 +1,8 @@
+# Congress Alpha dashboard theme (M5a): near-black background, neon accents.
+[theme]
+base = "dark"
+primaryColor = "#00E5FF"
+backgroundColor = "#0A0E14"
+secondaryBackgroundColor = "#131A26"
+textColor = "#E6F1F5"
+font = "sans serif"

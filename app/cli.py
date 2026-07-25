@@ -7,6 +7,7 @@ and `dashboard` remain stubs for later milestones.
 """
 
 import argparse
+import csv
 import logging
 from datetime import date
 from pathlib import Path
@@ -34,6 +35,7 @@ from app.intelligence.normalize import midpoint
 from app.intelligence.notes import add_note, list_notes
 from app.intelligence.positions import reconstruct_member
 from app.intelligence.scoring import run_scoring
+from app.intelligence.services import export_rows
 from app.parsing.house_fd import cross_check_fd, parse_fd_pdf
 from app.parsing.house_ptr import cross_check, parse_ptr_pdf
 from app.parsing.store import store_result
@@ -111,6 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="rebuild estimated positions and net-worth estimates (M3)",
     )
     subparsers.add_parser("score", help="run the policy-edge scoring engine (M4)")
+    subparsers.add_parser("export", help="write CSV exports to data/exports (M5a)")
 
     note_parser = subparsers.add_parser("note", help="manage notes on members/filings")
     note_subparsers = note_parser.add_subparsers(dest="note_command", required=True)
@@ -416,6 +419,21 @@ def _cmd_note_list(bioguide: str | None, doc_id: str | None) -> int:
     return 0
 
 
+def _cmd_export() -> int:
+    settings = get_settings()
+    init_db()
+    settings.exports_dir.mkdir(parents=True, exist_ok=True)
+    with session_scope() as session:
+        for filename, (header, rows) in export_rows(session).items():
+            path = settings.exports_dir / filename
+            with path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(header)
+                writer.writerows(rows)
+            logger.info("export %s: %d rows", filename, len(rows))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the CLI. Returns a process exit code."""
     args = build_parser().parse_args(argv)
@@ -442,6 +460,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_reconstruct()
     if args.command == "score":
         return _cmd_score()
+    if args.command == "export":
+        return _cmd_export()
     if args.command == "note":
         if args.note_command == "add":
             return _cmd_note_add(args.text, args.bioguide, args.doc_id)
