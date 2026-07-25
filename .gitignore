@@ -25,3 +25,7 @@ data/exports/*
 # Reference material kept locally, not in the repo
 Papers on Coding/
 congress-alpha-starter.zip
+
+# Tool-generated skill symlinks (machine-local, point into .venv)
+.agents/
+.claude/
