@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+import httpx
 import pytest
 from sqlmodel import Session, SQLModel
 
@@ -89,6 +90,24 @@ def test_secret_env_beats_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     monkeypatch.delenv("TIINGO_API_KEY")
     assert config.get_secret("TIINGO_API_KEY") == "file-key"
     assert config.get_secret("NO_SUCH_KEY") is None
+
+
+def test_tiingo_empty_series_on_persistent_404(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A delisted/unknown ticker must not kill a full scoring/validation run."""
+    from app.intelligence.tiingo import fetch_daily_closes_tiingo
+
+    monkeypatch.setenv("TIINGO_API_KEY", "test-key")
+
+    def _raise_404(url: str, *args: object, **kwargs: object) -> None:
+        request = httpx.Request("GET", url)
+        response = httpx.Response(404, request=request)
+        raise httpx.HTTPStatusError("404 Not Found", request=request, response=response)
+
+    monkeypatch.setattr(httpx, "get", _raise_404)
+    monkeypatch.setattr("app.ingestion.http.time.sleep", lambda *_args: None)
+    assert fetch_daily_closes_tiingo("DELISTED", tmp_path) == {}
 
 
 def test_relative_size_math(session: Session) -> None:

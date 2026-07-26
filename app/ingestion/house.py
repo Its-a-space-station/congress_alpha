@@ -70,6 +70,7 @@ class HouseFilingRecord:
     prefix: str | None
     suffix: str | None
     filing_type_raw: str
+    disclosure_type: str | None  # <DisclosureType>: only in early index years
     state_district: str
     index_year: int
     filing_date: date | None
@@ -78,6 +79,18 @@ class HouseFilingRecord:
     @property
     def filer_name(self) -> str:
         return f"{self.first_name} {self.last_name}".strip()
+
+
+def _effective_filing_type(record: HouseFilingRecord) -> FilingType:
+    """Map a record to its FilingType, handling the early index scheme.
+
+    In the 2012-2013 index files PTRs are coded FilingType=O with
+    DisclosureType=PTR (verified 2026-07-25); from 2015 they carry FilingType=P.
+    The raw code is always preserved on the Filing row.
+    """
+    if record.filing_type_raw == "O" and record.disclosure_type == "PTR":
+        return FilingType.PERIODIC_TRANSACTION
+    return _FILING_TYPE_MAP.get(record.filing_type_raw, FilingType.OTHER)
 
 
 def fetch_index(raw_dir: Path, year: int, *, refresh: bool = False) -> Path:
@@ -140,6 +153,7 @@ def parse_index(xml_path: Path) -> tuple[list[HouseFilingRecord], int]:
                 prefix=_text(member, "Prefix"),
                 suffix=_text(member, "Suffix"),
                 filing_type_raw=filing_type_raw,
+                disclosure_type=_text(member, "DisclosureType"),
                 state_district=state_district,
                 index_year=int(year_text),
                 filing_date=_parse_filing_date(_text(member, "FilingDate")),
@@ -296,8 +310,9 @@ def upsert_filings(
         ).first()
         values = {
             "member_id": member_id,
-            "filing_type": _FILING_TYPE_MAP.get(record.filing_type_raw, FilingType.OTHER),
+            "filing_type": _effective_filing_type(record),
             "filing_type_raw": record.filing_type_raw,
+            "disclosure_type": record.disclosure_type,
             "filer_name": record.filer_name,
             "state_district": record.state_district,
             "index_year": record.index_year,

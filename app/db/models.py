@@ -79,6 +79,7 @@ class Filing(SQLModel, table=True):
     period_start: date | None = None
     period_end: date | None = None
     official_doc_id: str | None = Field(default=None, index=True)
+    disclosure_type: str | None = None  # verbatim <DisclosureType> (early index years)
     source_url: str
     local_path: str | None = None  # path under data/raw once downloaded
     checksum: str | None = None

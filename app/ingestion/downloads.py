@@ -9,6 +9,7 @@ import logging
 import time
 from pathlib import Path
 
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from app.core.enums import Chamber
@@ -35,16 +36,36 @@ def download_filings(
     """Download up to `limit` not-yet-downloaded filings; record path + sha256.
 
     `filing_type_raw` optionally restricts to one upstream type code (e.g. "P"
-    for PTRs).
+    for PTRs). Documents from index years <= 2014 are excluded: the Clerk's
+    document service does not carry them at the current public_disc paths
+    (verified 2026-07-25 across multiple DocIDs) — they are counted as
+    skipped, never network-attempted.
     """
     query = select(Filing).where(
-        Filing.chamber == chamber, Filing.local_path.is_(None)  # type: ignore[union-attr]
+        Filing.chamber == chamber,
+        Filing.local_path.is_(None),  # type: ignore[union-attr]
+        or_(
+            Filing.index_year > 2014,  # type: ignore[operator,arg-type]
+            Filing.index_year.is_(None),  # type: ignore[union-attr]
+        ),
     )
     if filing_type_raw is not None:
         query = query.where(Filing.filing_type_raw == filing_type_raw)
     pending = session.exec(
         query.order_by(Filing.id).limit(limit)  # type: ignore[arg-type]
     ).all()
+    early_excluded = session.exec(
+        select(func.count()).select_from(Filing).where(
+            Filing.chamber == chamber,
+            Filing.local_path.is_(None),  # type: ignore[union-attr]
+            Filing.index_year <= 2014,  # type: ignore[operator]
+        )
+    ).one()
+    if early_excluded:
+        logger.info(
+            "skipping %d pre-2015 documents (unavailable at current public_disc paths)",
+            early_excluded,
+        )
     counters = Counters(total=len(pending))
 
     for filing in pending:

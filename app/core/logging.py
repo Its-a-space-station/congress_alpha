@@ -18,3 +18,7 @@ def setup_logging(level: str = "INFO") -> None:
         handler.setFormatter(logging.Formatter(_FORMAT))
         root.addHandler(handler)
     root.setLevel(numeric)
+    # httpx logs every request URL at INFO, and URLs can carry credentials
+    # (e.g. the Tiingo `token=` param) — keep HTTP-client loggers at WARNING.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)

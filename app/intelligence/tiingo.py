@@ -58,11 +58,17 @@ def fetch_daily_closes_tiingo(
         raise TiingoAuthError("TIINGO_API_KEY not set (env or .env)")
     symbol = tiingo_symbol(ticker)
     cache_path = raw_dir / PRICES_SUBDIR / f"tiingo_{symbol}.json"
-    payload = fetch(
-        _DAILY_URL.format(symbol=symbol, start=_START_DATE, token=token),
-        cache_path,
-        refresh=refresh,
-    )
+    try:
+        payload = fetch(
+            _DAILY_URL.format(symbol=symbol, start=_START_DATE, token=token),
+            cache_path,
+            refresh=refresh,
+        )
+    except RuntimeError as exc:
+        # Delisted/unknown tickers (404) or persistent network trouble must not
+        # kill a full scoring/validation run — treat as missing price data.
+        logger.warning("Tiingo fetch failed for %s (%s): %s", ticker, symbol, exc)
+        return {}
     series = _parse_daily(payload)
     if not series:
         logger.warning("no Tiingo price rows for %s (%s)", ticker, symbol)

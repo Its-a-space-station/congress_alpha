@@ -115,11 +115,87 @@ def _record(last: str, first: str, state_dst: str) -> HouseFilingRecord:
         prefix=None,
         suffix=None,
         filing_type_raw="P",
+        disclosure_type=None,
         state_district=state_dst,
         index_year=2025,
         filing_date=None,
         doc_id="x",
     )
+
+
+def test_early_scheme_disclosure_type_mapping(tmp_path: Path, session: Session) -> None:
+    """2012-2013 scheme: FilingType=O + DisclosureType=PTR -> PERIODIC_TRANSACTION."""
+    xml = tmp_path / "early.xml"
+    xml.write_text(
+        """<?xml version="1.0"?>
+<FinancialDisclosure>
+  <Member><Last>Early</Last><First>Era</First><FilingType>O</FilingType>
+    <StateDst>CA01</StateDst><Year>2012</Year><FilingDate>5/1/2012</FilingDate>
+    <DocID>2000001</DocID><DisclosureType>PTR</DisclosureType></Member>
+  <Member><Last>Plain</Last><First>Other</First><FilingType>O</FilingType>
+    <StateDst>CA01</StateDst><Year>2012</Year><FilingDate>5/1/2012</FilingDate>
+    <DocID>2000002</DocID><DisclosureType>FD</DisclosureType></Member>
+</FinancialDisclosure>
+"""
+    )
+    records, skipped = parse_index(xml)
+    assert skipped == 0
+    assert len(records) == 2
+    assert records[0].disclosure_type == "PTR"
+
+    upsert_filings(session, records, SOURCE_URL)
+    by_doc = {f.official_doc_id: f for f in session.exec(select(Filing)).all()}
+    # O + PTR maps to PERIODIC_TRANSACTION with the raw code preserved...
+    assert by_doc["2000001"].filing_type is FilingType.PERIODIC_TRANSACTION
+    assert by_doc["2000001"].filing_type_raw == "O"
+    assert by_doc["2000001"].disclosure_type == "PTR"
+    # ...while O + FD stays OTHER with its disclosure type preserved.
+    assert by_doc["2000002"].filing_type is FilingType.OTHER
+    assert by_doc["2000002"].disclosure_type == "FD"
+
+
+def test_downloader_excludes_pre_2015_documents(
+    session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    called: list[str] = []
+
+    def fake_fetch(url: str, cache_path: Path, *, refresh: bool = False) -> bytes:
+        called.append(url)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(b"%PDF-fake")
+        return b"%PDF-fake"
+
+    monkeypatch.setattr("app.ingestion.downloads.fetch", fake_fetch)
+    monkeypatch.setattr("app.ingestion.downloads.PACE_SECONDS", 0)
+
+    session.add(
+        Filing(
+            chamber=Chamber.HOUSE,
+            filing_type=FilingType.PERIODIC_TRANSACTION,
+            filing_type_raw="P",
+            official_doc_id="NEW2015",
+            index_year=2015,
+            source_url=SOURCE_URL,
+        )
+    )
+    session.add(
+        Filing(
+            chamber=Chamber.HOUSE,
+            filing_type=FilingType.PERIODIC_TRANSACTION,
+            filing_type_raw="O",
+            disclosure_type="PTR",
+            official_doc_id="OLD2012",
+            index_year=2012,
+            source_url=SOURCE_URL,
+        )
+    )
+    session.flush()
+
+    counters = download_filings(session, tmp_path, limit=10)
+    assert (counters.new, counters.skipped) == (1, 0)
+    assert len(called) == 1  # the 2012 document was never network-attempted
+    old = session.exec(select(Filing).where(Filing.official_doc_id == "OLD2012")).one()
+    assert old.local_path is None
 
 
 def test_match_member_rules(session: Session) -> None:
