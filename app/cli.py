@@ -28,6 +28,7 @@ from app.ingestion.loaders import (
 )
 from app.ingestion.records import Counters, parse_committees, parse_members, parse_membership
 from app.ingestion.sources import COMMITTEES, LEGISLATORS, MEMBERSHIP, snapshot_datasets
+from app.intelligence.analysis import run_analysis, write_analysis_report
 from app.intelligence.checkpoint import check_member
 from app.intelligence.mappings import load_mappings
 from app.intelligence.net_worth import estimate_net_worth
@@ -122,6 +123,15 @@ def build_parser() -> argparse.ArgumentParser:
         "validate", help="validate PTR purchase signals vs forward returns (M5b)"
     )
     validate_parser.add_argument(
+        "--provider",
+        choices=["tiingo", "yahoo"],
+        default="tiingo",
+        help="price data provider (default: tiingo)",
+    )
+    analyze_parser = subparsers.add_parser(
+        "analyze", help="alpha-decay + signal-persistence analysis (M8)"
+    )
+    analyze_parser.add_argument(
         "--provider",
         choices=["tiingo", "yahoo"],
         default="tiingo",
@@ -490,6 +500,52 @@ def _cmd_validate(provider_name: str) -> int:
     return 0
 
 
+def _cmd_analyze(provider_name: str) -> int:
+    settings = get_settings()
+    init_db()
+    with session_scope() as session:
+        if provider_name == "tiingo":
+            provider = lambda ticker: fetch_daily_closes_tiingo(ticker, settings.raw_dir)  # noqa: E731
+        else:
+            provider = lambda ticker: fetch_daily_closes(ticker, settings.raw_dir)  # noqa: E731
+        report = run_analysis(session, provider)
+        json_path, md_path = write_analysis_report(report, settings.exports_dir)
+        overall = report.lag_decay["overall"]
+        logger.info(
+            "lag decay: %d signals, invisible mean %s (n=%d), copy 30d mean %s (n=%d)",
+            overall["signals"],
+            f"{overall['mean_invisible_excess']:+.1%}"
+            if overall["mean_invisible_excess"] is not None
+            else "n/a",
+            overall["invisible_signals"],
+            f"{overall['mean_copy_30d_excess']:+.1%}"
+            if overall["mean_copy_30d_excess"] is not None
+            else "n/a",
+            overall["copy_30d_signals"],
+        )
+        for cohort, metrics in report.entry_vs_copy.items():
+            for m in metrics:
+                logger.info(
+                    "%s %dd: %d signals, mean excess %s, hit rate %s",
+                    cohort,
+                    m.horizon_days,
+                    m.signals,
+                    f"{m.mean_excess_return:+.1%}" if m.mean_excess_return is not None else "n/a",
+                    f"{m.hit_rate:.0%}" if m.hit_rate is not None else "n/a",
+                )
+        persistence = report.persistence
+        logger.info(
+            "persistence: %d qualifying members, spearman %s, top-decile retention %s",
+            persistence["members"],
+            f"{persistence['spearman']:.2f}" if persistence["spearman"] is not None else "n/a",
+            f"{persistence['top_decile_retention']:.0%}"
+            if persistence["top_decile_retention"] is not None
+            else "n/a",
+        )
+        logger.info("analysis report written: %s, %s", json_path, md_path)
+    return 0
+
+
 def _cmd_refresh(download_limit: int) -> int:
     settings = get_settings()
     stages = core_ingest_stages(settings.raw_dir) + [
@@ -541,6 +597,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_export()
     if args.command == "validate":
         return _cmd_validate(args.provider)
+    if args.command == "analyze":
+        return _cmd_analyze(args.provider)
     if args.command == "refresh":
         return _cmd_refresh(args.download_limit)
     if args.command == "note":
